@@ -3,7 +3,7 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
-## [Unreleased]
+## [1.7.0]
 
 ### SENSIQ for Linux (Ubuntu 22.04 and 24.04)
 - **Install with one file:** `sudo apt install ./sensiq_x.y.z_amd64.deb`. Everything still runs on your computer only; images are read with Tesseract (English and Hindi).

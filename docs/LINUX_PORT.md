@@ -1,8 +1,7 @@
 # SENSIQ for Linux (Ubuntu 22.04 – 24.04) — plan and status
 
-Status (2026-11-24): **phases 1–6 built and tested on Ubuntu 22.04** (Python 3.10, Tesseract 4.1.1,
-headless with Xvfb). **Not released yet**: the next version tag will build and publish the
-`.deb` via the release workflow. The Windows app is at 1.6.0 and its code paths are unchanged
+Status (2026-11-24): **released in 1.7.0**; phases 1–6 built and tested on Ubuntu 22.04 (Python 3.10, Tesseract 4.1.1,
+headless with Xvfb); the release workflow builds and publishes the `.deb`. The Windows app is at 1.6.0 and its code paths are unchanged
 apart from the refactors listed below.
 
 ## Decisions taken

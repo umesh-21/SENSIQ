@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SENSIQ",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Checks files you upload, drop or paste into web pages for personal details, on this computer only, and lets you send a safe copy instead.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7q6y3G8hruvSKTvDJrwvxv5cULLi/ILhHAWXn9oERUqOLL9aori5OtEbDdaQ2r9WjdYMepr4h5vNA6fjYubEPo/KcjJrolr+JWEFtaoNvcgkOlvPetGlKUW4Uaq/AKjMuhc93PqvsD4bY5q6K1P9ayN7JzMpFB1rdqepppeI3RvXLmpNsfzFQXs5nL37ANpN8aTE07vJir2K0G3H2+eT6Zd+GMd1oVTnTRVOstzsUtzhHq1lD9Xq67ok3OfPI9b/SSTrk+l/MisMy6evVuWS3tPtiSLmxQK0aBTb4pxC9d6fFq6Cq3TEAArPYiwVvPBC30RyUP261a1VTwsjaxYloQIDAQAB",
   "permissions": ["nativeMessaging"],

@@ -2,7 +2,7 @@
 ; Per-user install: no administrator rights needed.
 
 #define AppName "SENSIQ"
-#define AppVersion "1.6.0"
+#define AppVersion "1.7.0"
 #define AppExe "SENSIQ.exe"
 
 [Setup]
