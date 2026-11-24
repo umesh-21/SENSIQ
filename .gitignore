@@ -1,0 +1,15 @@
+# Python / tools
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# build output (made by build.ps1)
+build/
+dist/
+*.spec
+*.log
+@AutomationLog.txt
+# models are downloaded by build.ps1 (the name model is over GitHub's 100 MB file limit)
+models/
+# release scratch
+release-notes.md

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PII Guard test page</title>
+<style>
+  :root {
+    --page: #F3F5F8; --surface: #FFFFFF; --ink: #1C2433; --muted: #5B6577;
+    --line: #D5DBE4; --teal: #0E7C7B; --teal-dark: #0A5F5E; --red: #C8102E;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #141922; --surface: #1C2330; --ink: #E7EBF2; --muted: #9AA5B8;
+      --line: #313B4C; --teal: #3FB8B6; --teal-dark: #2E9896; --red: #F0647A;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font: 15px/1.55 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 40px 24px 64px; }
+  header { margin-bottom: 32px; max-width: 66ch; }
+  h1 { font: 600 28px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0 0 8px; }
+  h2 { font: 600 17px/1.3 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0 0 4px; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .swap { font: 15px Consolas, "Cascadia Mono", monospace; margin: 16px 0 0; display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+  .swap s { color: var(--red); text-decoration-thickness: 2px; }
+  .swap span { color: var(--teal); }
+  .grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  label { display: block; font-weight: 600; margin: 18px 0 6px; }
+  label:first-of-type { margin-top: 12px; }
+  input, textarea, .rich {
+    width: 100%; font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px;
+  }
+  textarea { min-height: 150px; resize: vertical; }
+  .rich { min-height: 110px; }
+  input:focus, textarea:focus, .rich:focus { outline: 2px solid var(--teal); outline-offset: 1px; border-color: transparent; }
+  .sample { border-top: 1px solid var(--line); padding: 14px 0; }
+  .sample:first-of-type { border-top: 0; padding-top: 6px; }
+  .sample h3 { font-size: 14px; margin: 0 0 4px; }
+  .sample code { display: block; font: 13px/1.5 Consolas, "Cascadia Mono", monospace; color: var(--muted); white-space: pre-wrap; margin-bottom: 8px; }
+  button {
+    font: 600 13px "Segoe UI", sans-serif; border-radius: 6px; padding: 6px 12px; cursor: pointer;
+    background: var(--teal); color: #fff; border: 1px solid var(--teal);
+  }
+  button:hover { background: var(--teal-dark); }
+  button.secondary { background: transparent; color: var(--ink); border-color: var(--line); margin-left: 6px; }
+  button.secondary:hover { background: var(--page); }
+  button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  ol { padding-left: 20px; margin: 8px 0 0; }
+  li { margin-bottom: 6px; }
+  footer { margin-top: 28px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>PII Guard test page</h1>
+    <p class="muted">This page works offline. Every value on it is fake. Type or paste into the fields and watch for the badge in the field's corner.</p>
+    <div class="swap" aria-label="Example: an Aadhaar number becomes XXXX XXXX 7615">
+      <s>4918 3205 7615</s><span aria-hidden="true">→</span><span>XXXX XXXX 7615</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section aria-labelledby="fields-h">
+      <h2 id="fields-h">Practice fields</h2>
+      <p class="muted">Each one is a different kind of text box, so you can see that detection works in all of them.</p>
+
+      <label for="email">Single-line input</label>
+      <input id="email" type="text" autocomplete="off" placeholder="Try: my email is rahul.sharma@example.com">
+
+      <label for="message">Message box (textarea)</label>
+      <textarea id="message" placeholder="Click a sample on the right, or type here"></textarea>
+
+      <label id="rich-label">Rich text editor (like Gmail or WhatsApp Web)</label>
+      <div class="rich" id="rich" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="rich-label"></div>
+
+      <h2 style="margin-top:24px">What to try</h2>
+      <ol>
+        <li>Put a sample in the message box. After half a second a red or amber badge shows the number of findings.</li>
+        <li>Click the badge. The panel lists each item with its safe replacement.</li>
+        <li>Click Replace on one item, or Replace all. The text in the box changes and the badge clears.</li>
+        <li>Try Ignore on a name, then type it again: it stays quiet for this session.</li>
+        <li>Paste the clean sample: no badge should appear.</li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="samples-h">
+      <h2 id="samples-h">Samples</h2>
+      <div id="samples"></div>
+    </section>
+  </div>
+
+  <footer class="muted">After this, try the same samples in Notepad, Word, Outlook, Teams, Slack or WhatsApp Desktop.</footer>
+</main>
+
+<script>
+  const samples = [
+    ["Contact details", "Hi, I'm Rahul Sharma. Call me on +91 98765 43210 or write to rahul.sharma@example.com."],
+    ["Government IDs", "My Aadhaar is 4918 3205 7615 and PAN is ABCPE1234F. DOB: 14/08/1996."],
+    ["Payment details", "Refund to card 4111 1111 1111 1111 or account no 123456789012, IFSC SBIN0001234, UPI rahul.s@okaxis"],
+    ["Secrets", "The server password is Tiger@2024 and the deploy key is AKIAIOSFODNN7EXAMPLE"],
+    ["Clean text (should stay quiet)", "The review moved to Thursday at 4 pm. Order 20231105 shipped in 3 boxes."]
+  ];
+  const box = document.getElementById("message");
+  const list = document.getElementById("samples");
+
+  for (const [title, text] of samples) {
+    const wrap = document.createElement("div");
+    wrap.className = "sample";
+    const h = document.createElement("h3"); h.textContent = title;
+    const code = document.createElement("code"); code.textContent = text;
+    const put = document.createElement("button"); put.textContent = "Put in message box";
+    put.addEventListener("click", () => {
+      box.value = text;
+      box.focus();
+      box.setSelectionRange(text.length, text.length);
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const copy = document.createElement("button"); copy.className = "secondary"; copy.textContent = "Copy";
+    copy.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(text); }
+      catch { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+      copy.textContent = "Copied"; setTimeout(() => copy.textContent = "Copy", 1500);
+    });
+    wrap.append(h, code, put, copy);
+    list.appendChild(wrap);
+  }
+</script>
+</body>
+</html>

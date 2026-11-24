@@ -1,0 +1,79 @@
+# Builds the Windows setup file and publishes it as a GitHub Release when a version tag
+# (v1.2.0, v1.3.0, ...) is pushed. Installed copies of PII Guard find the new release,
+# show its notes (from CHANGELOG.md) and offer to update.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v1.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check the tag matches the app version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path piiguard/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$v" -ne $env:TAG) { throw "Tag $env:TAG doesn't match __version__ $v (run tools/release.ps1)" }
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build app and setup file
+        shell: pwsh
+        run: ./build.ps1 -SkipTests
+
+      - name: Unit tests (informational; some need Windows OCR, missing on servers)
+        shell: pwsh
+        continue-on-error: true
+        run: .venv\Scripts\python.exe -m pytest -q tests
+
+      - name: Release notes and checksum
+        shell: pwsh
+        run: |
+          $setup = "dist/installer/PIIGuard-Setup-$env:VERSION.exe"
+          if (-not (Test-Path $setup)) { throw "setup file missing: $setup" }
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          "$hash  PIIGuard-Setup-$env:VERSION.exe" | Out-File "$setup.sha256" -Encoding ascii -NoNewline
+          $text = Get-Content CHANGELOG.md -Raw
+          $m = [regex]::Match($text, "(?ms)^## \[$([regex]::Escape($env:VERSION))\][^\n]*\n(.*?)(?=^## \[|\z)")
+          $notes = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "See CHANGELOG.md." }
+          $notes += "`n`n---`n**Install:** download ``PIIGuard-Setup-$env:VERSION.exe`` below and run it (Windows 10/11, 64-bit, no admin rights). Already installed? PII Guard offers this update by itself.`n`nSHA-256: ``$hash``"
+          $notes | Out-File release-notes.md -Encoding utf8
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $setup = "dist/installer/PIIGuard-Setup-$env:VERSION.exe"
+          gh release view $env:TAG 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG $setup "$setup.sha256" --clobber
+            gh release edit $env:TAG --notes-file release-notes.md
+          } else {
+            gh release create $env:TAG $setup "$setup.sha256" --title "PII Guard $env:VERSION" --notes-file release-notes.md
+          }

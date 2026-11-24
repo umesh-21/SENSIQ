@@ -1,0 +1,24 @@
+uiautomation>=2.0.18
+comtypes>=1.2.0
+onnxruntime>=1.17,<2
+tokenizers>=0.15
+numpy>=1.24
+pystray>=0.19.5
+Pillow>=10.0
+# Presidio detectors (https://github.com/data-privacy-stack/presidio) + small spaCy model
+presidio-analyzer>=2.2.360
+spacy>=3.7,<3.9
+# PDFs (text layer + rendering scanned pages)
+pypdfium2>=4.30
+# Windows' built-in OCR for images and scanned PDF pages
+winrt-runtime>=2.0
+winrt-Windows.Media.Ocr>=2.0
+winrt-Windows.Graphics.Imaging>=2.0
+winrt-Windows.Storage.Streams>=2.0
+winrt-Windows.Foundation>=2.0
+winrt-Windows.Foundation.Collections>=2.0
+winrt-Windows.Globalization>=2.0
+# QR codes / barcodes, iPhone photos (HEIC), old Office files
+zxing-cpp>=2.2
+pillow-heif>=0.16
+olefile>=0.46
