@@ -3,6 +3,13 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
+## [1.3.0]
+
+### New
+- **Close a report and pick another file.** The report card now has a **✕** in its corner. In an upload window, choosing a different file replaces the report with the new file's straight away.
+- **Choose where safe copies are saved.** The setup asks for a folder. You can change it any time from the tray (**Safe copies folder → Change folder…**). Copies in a folder you choose are kept, and the default folder is still cleared after 24 hours.
+- **"Checking…" before you upload.** As soon as you pick a file to upload or attach, PII Guard says it's checking and asks you to wait. Then you get the report, or "No personal information found" for a clean file.
+
 ## [1.2.0]
 
 ### New

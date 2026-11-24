@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, Set
 
 from .nativehost import link_key, pipe_address
-from .paths import data_dir, resource_dir, safe_copies_dir
+from .paths import data_dir, resource_dir, work_dir
 
 log = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ class BrowserLink(threading.Thread):
                             self.browsers[cid] = msg["browser"].lower()
                         log.info("browser link: %s connected", msg["browser"])
                 elif op == "check":
-                    folder = safe_copies_dir() / "_work" / ("web-" + hashlib.sha1(
+                    folder = work_dir() / ("web-" + hashlib.sha1(
                         f"{msg['id']}{time.time()}".encode()).hexdigest()[:12])
                     requests[msg["id"]] = _Request(msg["id"], msg.get("files") or [], folder)
                 elif op == "chunk":

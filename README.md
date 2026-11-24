@@ -107,11 +107,11 @@ PII Guard never searches or indexes your folders. For a file dialog, it asks the
 
 If you double-click a file, or press Enter at once, the dialog may close before the card can appear. PII Guard still checks the file. It tells Open from Cancel by watching whether the dialog was closed with Cancel, the window's X, Esc or Alt+F4. For this it hooks only those two keys, and only while a file dialog is open. The card then says the file was already added to the page and offers a safe copy to paste in its place.
 
-Clean files show nothing. Save dialogs are ignored. Drags that start outside File Explorer, for example from a browser's downloads list, aren't seen.
+When you pick a file to upload, attach or send, a small **"PII Guard is checking…"** note appears at once, asking you to wait for the result. It is replaced by the report card, or by **"✓ No personal information found"** for a clean file. (Copying with Ctrl+C stays quiet unless something is found.) Save dialogs are ignored. Drags that start outside File Explorer, for example from a browser's downloads list, aren't seen.
 
 ### Replacing details before you share
 
-The card lists every detail with a tick box, all ticked. Untick anything you want to keep, then press the button:
+The card lists every detail with a tick box, all ticked. The **✕** in its top-right corner closes the report without doing anything, so you can pick a different file. In an upload window, just selecting another file also replaces the report with the new file's. Untick anything you want to keep, then press the button:
 
 | Shared by | Button | What is shared instead |
 |---|---|---|
@@ -126,7 +126,9 @@ How each type is made safe:
 - **PDFs**: every page is turned into an image and covered the same way. A box drawn over real PDF text would leave the text underneath copyable; this way it's really gone. The safe PDF's text can no longer be selected.
 - **Word, PowerPoint, Excel, OpenDocument, text files**: the values are replaced with their masked form and the rest of the file is kept. A value split oddly across formatting may be missed; the message says so if anything wasn't found.
 
-Replacements follow the mask style (tray → "Replace with labels like [Aadhaar]"). Safe copies are saved in `%LOCALAPPDATA%\PIIGuard\Safe copies` and deleted after 24 hours. "Use original" closes the card and changes nothing.
+Replacements follow the mask style (tray → "Replace with labels like [Aadhaar]"). "Use original" closes the card and changes nothing.
+
+**Where safe copies are saved.** You choose this on the setup's **Safe copies folder** page, and can change it any time from tray → **Safe copies folder** → Change folder… (or Open, or Use the default folder). The default is `%LOCALAPPDATA%\PIIGuard\Safe copies`, and copies there are deleted after 24 hours. Copies in a folder you choose are kept until you delete them. Each action gets its own dated sub-folder. Updates keep your choice.
 
 ## Build it yourself
 
@@ -213,6 +215,7 @@ Tray menu → Open settings file (`%APPDATA%\PIIGuard\settings.json`), then Relo
 | `file_scan.enabled` | `true` | Check images and files you share |
 | `file_scan.clipboard` / `drag_drop` / `file_dialogs` | `true` | Turn each trigger on or off |
 | `file_scan.max_file_mb` / `max_pdf_pages` | `200` / `0` | Limits for large files (`0` = every page) |
+| `file_scan.safe_copies_folder` | `""` | Folder for safe copies (`""` = default, cleared after 24 h). Set from the tray or the setup |
 | `file_scan.browser_extension` / `opened_files` | `true` / `false` | Browser-extension link; offer a check when you open a file |
 | `never_flag_words` | `[]` | Names/places never flagged (the card's "not private" adds here) |
 | `updates.check` | `true` | Check GitHub for new versions twice a day |

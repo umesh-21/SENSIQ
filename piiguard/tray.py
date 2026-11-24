@@ -47,6 +47,12 @@ class Tray:
             Menu.SEPARATOR,
             Item("Start with Windows", self._post("startup"), checked=lambda item: winutil.is_startup_enabled()),
             Item("Check uploads in my browser (set up)…", self._post("browser_setup")),
+            Item("Safe copies folder", Menu(
+                Item("Open safe copies folder", self._post("safe_open")),
+                Item("Change folder…", self._post("safe_change")),
+                Item("Use the default folder (deleted after 24 hours)", self._post("safe_default"),
+                     checked=lambda item: not self.app.config.data.get("file_scan", {}).get("safe_copies_folder")),
+            )),
             Item("Offer a check when I open a file", self._post("opened_files"),
                  checked=lambda item: bool(self.app.config.data.get("file_scan", {}).get("opened_files", False))),
             Item("Read Hindi in images (install)…", self._post("add_hindi"),

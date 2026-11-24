@@ -11,9 +11,11 @@ from __future__ import annotations
 import argparse
 import logging
 import logging.handlers
+import os
 import queue
 import sys
 import threading
+from pathlib import Path
 
 from . import APP_NAME, __version__, winutil
 from .detector.types import HIGH
@@ -52,6 +54,7 @@ class App:
         if args.no_ner:
             self.config.data["ner"]["enabled"] = False
         self.ignore = IgnoreList.load()
+        self._apply_safe_copies_folder(startup=True)
         self.events: "queue.Queue" = queue.Queue()
         self.stop = threading.Event()
 
@@ -183,10 +186,24 @@ class App:
             if not self.config.data.get("enabled", True):
                 if ctx.reply is not None:
                     ctx.reply("original")
+            elif self.report_open is not None and self._same_dialog(self.report_open, ctx):
+                # another file picked in the same upload window: its report replaces the old one
+                self.report_queue = [q for q in self.report_queue if not self._same_dialog(q[0], ctx)]
+                self.overlay.close_file_report("replaced")
+                self.root.after(150, lambda c=ctx, r=results: self._show_report(c, r))
             elif self.report_open is not None:
                 self.report_queue.append((ctx, results))  # one card at a time; the next follows
             else:
                 self._show_report(ctx, results)
+        elif kind == "scan_start":
+            if self.config.data.get("enabled", True):
+                self.overlay.checking(ev[1])
+        elif kind == "scan_clean":
+            self.overlay.close_checking()
+            if self.config.data.get("enabled", True):
+                self.overlay.toast(ev[1], "ok", ms=3500)
+        elif kind == "scan_done":
+            self.overlay.close_checking()
         elif kind == "offer_check":
             from pathlib import Path as _P
             path = ev[1]
@@ -194,6 +211,7 @@ class App:
                                "Check it", lambda p=path: self.scanner.submit_files("File you opened", [p],
                                                                                     kind="opened"))
         elif kind == "files_unchecked":
+            self.overlay.close_checking()
             if self.config.data.get("enabled", True):
                 self.overlay.toast(ev[1], "warn", ms=12000)
         elif kind == "scan_progress":
@@ -274,8 +292,14 @@ class App:
         self.findings = [x for x in self.findings if x.fingerprint() != f.fingerprint()]
         self.overlay.update(self.findings)
 
+    @staticmethod
+    def _same_dialog(a, b) -> bool:
+        return (getattr(a, "kind", "") == "dialog" and getattr(b, "kind", "") == "dialog"
+                and getattr(a, "dialog_hwnd", 0) == getattr(b, "dialog_hwnd", 0))
+
     def _show_report(self, ctx, results) -> None:
         import os
+        self.overlay.close_checking()
         self.report_open = ctx
 
         def apply(chosen, c=ctx, r=results):
@@ -283,11 +307,21 @@ class App:
 
         def closed(reason, c=ctx):
             # "original": Use original; "timeout": no choice in time; "done": safe copy finished
-            if c.reply is not None and reason in ("original", "timeout"):
+            if c.reply is not None and reason in ("original", "timeout", "dismissed", "replaced"):
                 c.reply("original" if reason == "original" else "cancel")
                 if reason == "timeout":
                     self.overlay.toast("No choice was made in time, so the file wasn't given to the page. "
                                        "Add it again when you're ready.", "warn", ms=8000)
+            if reason == "dismissed":  # the card's ✕: nothing shared, pick another file
+                if c.reply is not None:
+                    msg = "Report closed. The file wasn't given to the page; choose another file when you're ready."
+                elif c.kind == "dialog":
+                    msg = "Report closed. Pick another file in the window to check it, or Cancel."
+                elif c.kind == "uploaded":
+                    msg = "Report closed. The file is already added to the page; remove it there if you need to."
+                else:
+                    msg = "Report closed. Nothing was changed."
+                self.overlay.toast(msg, "info", ms=6000)
             self.report_open = None
             if self.report_queue:
                 self.root.after(300, lambda: self._show_report(*self.report_queue.pop(0)))
@@ -362,6 +396,71 @@ class App:
         self.overlay.toast(f"Version {info.version} skipped. Tray → Check for updates now still finds it.",
                            "info", ms=5000)
 
+    # ---- safe copies folder ---------------------------------------------------------------
+    def _apply_safe_copies_folder(self, startup: bool = False) -> None:
+        """Use the folder from settings. At start-up, a different folder chosen on the
+        installer's page (registry) wins, so reinstalling with a new choice takes effect."""
+        from . import paths
+        fs = self.config.data.setdefault("file_scan", {})
+        folder = str(fs.get("safe_copies_folder") or "")
+        default = str(paths.default_safe_copies_dir())
+        norm = lambda s: os.path.normcase(os.path.normpath(s)) if s else ""  # noqa: E731
+        if startup:
+            reg = paths.registry_safe_copies_folder()
+            if reg and norm(reg) != norm(folder or default):
+                folder = "" if norm(reg) == norm(default) else reg
+                fs["safe_copies_folder"] = folder
+                try:
+                    self.config.save()
+                except Exception:
+                    log.debug("could not save settings", exc_info=True)
+        paths.set_safe_copies_folder(folder or None)
+        paths.remember_safe_copies_folder(folder)
+
+    def _change_safe_copies_folder(self) -> None:
+        import tkinter as tk
+        from tkinter import filedialog
+        from . import paths
+        current = paths.safe_copies_dir()
+        holder = tk.Toplevel(self.root)   # keeps the folder picker in front of other windows
+        holder.withdraw()
+        holder.attributes("-topmost", True)
+        try:
+            chosen = filedialog.askdirectory(parent=holder, initialdir=str(current), mustexist=False,
+                                             title="Choose where PII Guard saves safe copies of your files")
+        finally:
+            holder.destroy()
+        if not chosen:
+            return
+        target = Path(chosen)
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+            probe = target / ".piiguard-write-test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            self.overlay.toast(f"PII Guard can't save files in {target} ({exc.strerror or exc}). "
+                               "Choose another folder.", "warn", ms=8000)
+            return
+        default = paths.default_safe_copies_dir()
+        same_as_default = os.path.normcase(str(target.resolve())) == os.path.normcase(str(default.resolve()))
+        self.config.data.setdefault("file_scan", {})["safe_copies_folder"] = "" if same_as_default else str(target)
+        self.config.save()
+        self._apply_safe_copies_folder()
+        if same_as_default:
+            self.overlay.toast("Safe copies will be saved in the default folder and deleted after 24 hours.",
+                               "ok", ms=5000)
+        else:
+            self.overlay.toast(f"Safe copies will be saved in {target}. They're kept until you delete them.",
+                               "ok", ms=6000)
+
+    def _default_safe_copies_folder(self) -> None:
+        self.config.data.setdefault("file_scan", {})["safe_copies_folder"] = ""
+        self.config.save()
+        self._apply_safe_copies_folder()
+        self.overlay.toast("Safe copies will be saved in the default folder and deleted after 24 hours.",
+                           "ok", ms=5000)
+
     def toggle_style(self) -> None:
         self.config.data["mask_style"] = "placeholder" if self._style() == "partial" else "partial"
         self.config.save()
@@ -399,6 +498,13 @@ class App:
             self.overlay.toast("Installing Hindi reading for images. Windows will ask for permission; "
                                "the download is about 2 MB.", "info", ms=6000)
             threading.Thread(target=self._install_ocr_language, args=("hi-IN",), daemon=True).start()
+        elif action == "safe_open":
+            from .paths import safe_copies_dir
+            winutil.open_path(safe_copies_dir())
+        elif action == "safe_change":
+            self._change_safe_copies_folder()
+        elif action == "safe_default":
+            self._default_safe_copies_folder()
         elif action == "check_updates":
             self.overlay.toast("Checking GitHub for a new version…", "info", ms=3000)
             self._check_updates_now()
@@ -415,6 +521,7 @@ class App:
             winutil.open_in_notepad(self.config.path)
         elif action == "reload":
             self.config.reload()
+            self._apply_safe_copies_folder()
             self.detector.request_reload()
             self.watcher.commands.put(("refresh",))
             self.overlay.toast("Settings reloaded.", "ok", ms=2000)

@@ -11,7 +11,7 @@ Three watchers feed one scanner thread:
     the check runs as soon as a file is selected, before you press Open.
 
 When the report card's "Replace" is clicked, the scanner writes safe copies to
-%LOCALAPPDATA%\\PIIGuard\\Safe copies and hands them on instead of the originals:
+the safe-copies folder (chosen in setup or the tray) and hands them on instead of the originals:
   copied image  -> the clipboard now holds the safe image (Ctrl+V pastes it)
   copied files  -> the clipboard now holds the safe copies
   upload dialog -> the dialog is pointed at the safe copy and Open is pressed
@@ -35,12 +35,14 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from . import filescan, winutil
-from .paths import safe_copies_dir
+from .paths import default_safe_copies_dir, safe_copies_dir, work_dir
 
 log = logging.getLogger(__name__)
 
 EXPLORER_ROOTS = {"CabinetWClass", "ExploreWClass", "Progman", "WorkerW"}
 SAFE_COPY_HOURS = 24
+# shares where the user is about to upload/attach: say "checking…" at once and "nothing found" after
+ANNOUNCE_KINDS = {"dialog", "uploaded", "browser", "drag", "opened"}
 LONG_FILE_PAGES = 15  # tell the user when checking files with this many pages or more
 MANY_FILES = 6        # ...or this many files at once
 MAX_FILES = 500       # files checked per action (folders and ZIPs included)
@@ -72,7 +74,8 @@ class FileResult:
 
 def _is_safe_copy(p) -> bool:
     try:
-        return Path(p).resolve().is_relative_to(safe_copies_dir().resolve())
+        rp = Path(p).resolve()
+        return any(rp.is_relative_to(d.resolve()) for d in {safe_copies_dir(), default_safe_copies_dir(), work_dir()})
     except Exception:
         return False
 
@@ -157,6 +160,9 @@ class FileScanWorker(_Logged):
                     ctx.reply("original")    # a failed check mustn't freeze the page
                     self.events.put(("files_unchecked", "PII Guard couldn't check the file the page received. "
                                                         "Look through it yourself."))
+            finally:
+                if job[0] != "redact":
+                    self.events.put(("scan_done",))  # closes the "checking…" note whatever happened
 
     def _configure(self) -> None:
         from . import ocr, visual
@@ -175,7 +181,12 @@ class FileScanWorker(_Logged):
             results.append(res)
         else:
             files = self._expand(payload)
-            if len(files) >= MANY_FILES:
+            announce = ctx.kind in ANNOUNCE_KINDS and files
+            if announce:  # say at once that the file is being checked, before it's shared
+                what = (self._display_name(files[0]) if len(files) == 1 else f"{len(files)} files")
+                self.events.put(("scan_start", f"Checking {what} for personal information… "
+                                               "Please wait for the result before you upload or send it."))
+            elif len(files) >= MANY_FILES:
                 self.events.put(("scan_progress", f"Checking {len(files)} files for private details…"))
             for p in files:
                 results.append(self._scan_file(p))
@@ -195,8 +206,12 @@ class FileScanWorker(_Logged):
                                                 "Look through it yourself before you share it."))
         if flagged:
             self.events.put(("file_report", ctx, flagged))
-        elif ctx.reply is not None:
-            ctx.reply("original")  # nothing private: the page gets the file straight away
+        else:
+            if ctx.reply is not None:
+                ctx.reply("original")  # nothing private: the page gets the file straight away
+            if kind != "image" and ctx.kind in ANNOUNCE_KINDS and results and not unchecked:
+                what = results[0].name if len(results) == 1 else f"these {len(results)} files"
+                self.events.put(("scan_clean", f"✓ No personal information found in {what}. It's fine to share."))
 
     # ---- which files ----------------------------------------------------------------------
     def _expand(self, paths: Sequence[str]) -> List[Path]:
@@ -220,7 +235,7 @@ class FileScanWorker(_Logged):
     def _unzip(self, archive: Path) -> List[Path]:
         """Supported files inside a ZIP, unpacked to a private work folder so they can be read.
         The safe copy of the ZIP is rebuilt from them later."""
-        work = safe_copies_dir() / "_work" / hashlib.sha1(f"{archive}{time.time()}".encode()).hexdigest()[:12]
+        work = work_dir() / hashlib.sha1(f"{archive}{time.time()}".encode()).hexdigest()[:12]
         out: List[Path] = []
         try:
             with zipfile.ZipFile(archive) as z:
@@ -302,7 +317,8 @@ class FileScanWorker(_Logged):
         return self.config.data.get("mask_style", "partial")
 
     def _cleanup(self) -> None:
-        root = safe_copies_dir()
+        # only the default folder is emptied; a folder the user chose keeps its copies
+        root = default_safe_copies_dir()
         cutoff = time.time() - SAFE_COPY_HOURS * 3600
         for d in root.iterdir() if root.exists() else []:
             try:
@@ -310,8 +326,8 @@ class FileScanWorker(_Logged):
                     shutil.rmtree(d, ignore_errors=True)
             except OSError:
                 pass
-        work = root / "_work"  # unpacked ZIP contents: kept only while a card may need them
-        for d in work.iterdir() if work.exists() else []:
+        work = work_dir()  # unpacked ZIP contents, web uploads: kept only while a card may need them
+        for d in list(work.iterdir()) + list((root / "_work").glob("*") if (root / "_work").exists() else []):
             try:
                 if d.stat().st_mtime < time.time() - 2 * 3600:
                     shutil.rmtree(d, ignore_errors=True)
@@ -956,6 +972,8 @@ class DialogWatcher(_Logged):
                 try:
                     hwnd = winutil.foreground_window()
                     is_dialog = bool(hwnd) and self._class(hwnd) == "#32770"
+                    if is_dialog and hwnd != dialog and winutil.window_pid(hwnd) == os.getpid():
+                        continue  # PII Guard's own window (e.g. choosing the safe-copies folder)
                     if is_dialog and hwnd != dialog and \
                             winutil.process_name(winutil.window_pid(hwnd)) in self.skip_apps():
                         continue  # the browser extension checks this upload when the page receives it

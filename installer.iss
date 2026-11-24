@@ -2,7 +2,7 @@
 ; Per-user install: no administrator rights needed.
 
 #define AppName "PII Guard"
-#define AppVersion "1.2.0"
+#define AppVersion "1.3.0"
 #define AppExe "PIIGuard.exe"
 
 [Setup]
@@ -44,6 +44,8 @@ Name: "{autodesktop}\PII Guard"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "PIIGuard"; ValueData: """{app}\{#AppExe}"""; Flags: uninsdeletevalue; Tasks: startup
+; where safe copies go (the "Safe copies folder" page); the app keeps this in step with its settings
+Root: HKCU; Subkey: "Software\PIIGuard"; ValueType: string; ValueName: "SafeCopiesFolder"; ValueData: "{code:GetSafeDir}"; Flags: uninsdeletekey
 ; the browser link (native messaging host) the app registers itself: removed on uninstall
 Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.piiguard.host"; Flags: dontcreatekey uninsdeletekey
 Root: HKCU; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\com.piiguard.host"; Flags: dontcreatekey uninsdeletekey
@@ -72,3 +74,37 @@ begin
   Sleep(1000);
   Result := '';
 end;
+
+// ---- "Safe copies folder" page ---------------------------------------------------------
+var
+  SafePage: TInputDirWizardPage;
+
+function DefaultSafeDir(): String;
+begin
+  Result := ExpandConstant('{localappdata}\PIIGuard\Safe copies');
+end;
+
+procedure InitializeWizard;
+var
+  Prev: String;
+begin
+  SafePage := CreateInputDirPage(wpSelectTasks,
+    'Safe copies folder', 'Where should PII Guard save the safe copies of your files?',
+    'When you choose to replace private details, PII Guard saves the safe version of the file in this folder. ' +
+    'Your original files are never changed.' + #13#10#13#10 +
+    'Copies in the default folder are deleted after 24 hours. Copies in a folder you choose are kept until you delete them.' + #13#10#13#10 +
+    'You can change this later: right-click the PII Guard shield in the taskbar, then Safe copies folder.',
+    False, '');
+  SafePage.Add('');
+  if not RegQueryStringValue(HKCU, 'Software\PIIGuard', 'SafeCopiesFolder', Prev) or (Prev = '') then
+    Prev := DefaultSafeDir();
+  SafePage.Values[0] := Prev;
+end;
+
+function GetSafeDir(Param: String): String;
+begin
+  Result := SafePage.Values[0];
+  if Result = '' then
+    Result := DefaultSafeDir();
+end;
+

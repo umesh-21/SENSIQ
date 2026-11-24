@@ -160,6 +160,8 @@ def test_zip_checked_and_rebuilt(tmp_path, engine):
                        reply=lambda action, files=None: handed.append((action, files)))
     sc._run_job(("files", ctx, [str(src)]))
     ev = sc.events.get(timeout=10)
+    while ev[0] == "scan_start":   # "checking…" note comes first for uploads
+        ev = sc.events.get(timeout=10)
     assert ev[0] == "file_report"
     results = ev[2]
     assert [r.name for r in results] == ["docs.zip › notes/a.txt"]

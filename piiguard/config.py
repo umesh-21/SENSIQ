@@ -48,6 +48,7 @@ DEFAULTS = {
         "opened_files": False,    # offer a check when you open a document/picture (off by default)
         "max_file_mb": 200,
         "max_pdf_pages": 0,       # 0 = every page of a PDF / multi-page image
+        "safe_copies_folder": "",  # where safe copies are saved; "" = default (cleared after 24 h)
     },
     # New versions from GitHub Releases (the only time the app goes online). repo "" = built in.
     "updates": {"check": True, "repo": "", "skip_version": ""},

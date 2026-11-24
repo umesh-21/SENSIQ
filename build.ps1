@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Builds PII Guard into dist\PIIGuard\PIIGuard.exe and an installer
-  (dist\installer\PIIGuard-Setup-1.2.0.exe).
+  (dist\installer\PIIGuard-Setup-1.3.0.exe).
 
 .DESCRIPTION
   Run once on a Windows 10/11 x64 machine that has internet access.
@@ -138,7 +138,7 @@ $iscc = @(
 
 if ($iscc) {
     & $iscc installer.iss; Check "Inno Setup"
-    Write-Host "`nDone. Installer: dist\installer\PIIGuard-Setup-1.2.0.exe" -ForegroundColor Green
+    Write-Host "`nDone. Installer: dist\installer\PIIGuard-Setup-1.3.0.exe" -ForegroundColor Green
 } else {
     Write-Warning "Inno Setup 6 not found (free from jrsoftware.org). Making a portable zip instead."
     Copy-Item demo "dist\PIIGuard\demo" -Recurse -Force

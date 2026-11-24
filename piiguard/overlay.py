@@ -385,8 +385,17 @@ class Overlay:
         body.pack(padx=(px(4), 1), pady=1, fill="both")
         total = sum(len(r.findings) for r in results)
         what = "this image" if ctx.kind == "image" else ("these files" if len(results) > 1 else "this file")
-        tk.Label(body, text=f"{total} private detail{'s' if total != 1 else ''} in {what}", font=self.f_title,
-                 fg=INK, bg=SURFACE, anchor="w").pack(fill="x")
+        top = tk.Frame(body, bg=SURFACE)
+        top.pack(fill="x")
+        tk.Label(top, text=f"{total} private detail{'s' if total != 1 else ''} in {what}", font=self.f_title,
+                 fg=INK, bg=SURFACE, anchor="w").pack(side="left")
+        # ✕ closes the report without doing anything, so another file can be chosen
+        close_x = tk.Label(top, text="✕", font=("Segoe UI", 11), fg=MUTED, bg=SURFACE, cursor="hand2",
+                           padx=px(4))
+        close_x.pack(side="right")
+        close_x.bind("<Button-1>", lambda e: self.close_file_report("dismissed"))
+        close_x.bind("<Enter>", lambda e: close_x.configure(fg=INK))
+        close_x.bind("<Leave>", lambda e: close_x.configure(fg=MUTED))
         tk.Label(body, text=f"{ctx.source}. {self.HINT_TEXT.get(ctx.kind, '')}", font=self.f_small, fg=MUTED,
                  bg=SURFACE, anchor="w", wraplength=px(360), justify="left").pack(fill="x", pady=(px(2), px(8)))
         tk.Frame(body, bg=SURFACE, width=px(360), height=0).pack()
@@ -708,6 +717,56 @@ class Overlay:
         self._show(w, x, y, ww, hh)
         self.toast_win = w
         self._toast_job = self.root.after(ms, self._close_toast)
+
+    # ---- "checking…" note -------------------------------------------------------------
+    def checking(self, message: str, ms: int = 600000) -> None:
+        """Shown the moment a file is picked to upload/send, until its report (or "nothing
+        found") arrives. Separate from toasts so other short notices don't hide it."""
+        self.close_checking()
+        px = self.px
+        w = self._new_window(ACTION)
+        inner = tk.Frame(w, bg=SURFACE, padx=px(12), pady=px(10))
+        inner.pack(padx=(px(4), 1), pady=1)
+        head = tk.Label(inner, text="PII Guard is checking", font=self.f_label, fg=ACTION, bg=SURFACE, anchor="w")
+        head.pack(fill="x")
+        tk.Label(inner, text=message, font=self.f_body, fg=INK, bg=SURFACE, wraplength=px(300),
+                 justify="left").pack(anchor="w", pady=(px(2), 0))
+        w.update_idletasks()
+        ww, hh = w.winfo_reqwidth(), w.winfo_reqheight()
+        left, top, right, bottom = winutil.work_area()
+        x, y = self._clamp(right - ww - px(24), bottom - hh - px(24), ww, hh)
+        self._show(w, x, y, ww, hh)
+        self.checking_win = w
+        state = {"n": 0}
+
+        def tick():
+            if getattr(self, "checking_win", None) is not w:
+                return
+            state["n"] = (state["n"] + 1) % 4
+            try:
+                head.configure(text="PII Guard is checking" + "." * state["n"])
+            except tk.TclError:
+                return
+            self._checking_tick = self.root.after(400, tick)
+        self._checking_tick = self.root.after(400, tick)
+        self._checking_job = self.root.after(ms, self.close_checking)
+
+    def close_checking(self) -> None:
+        for name in ("_checking_tick", "_checking_job"):
+            job = getattr(self, name, None)
+            if job is not None:
+                try:
+                    self.root.after_cancel(job)
+                except Exception:
+                    pass
+                setattr(self, name, None)
+        w = getattr(self, "checking_win", None)
+        self.checking_win = None
+        if w is not None:
+            try:
+                w.destroy()
+            except Exception:
+                pass
 
     # ---- update card ----------------------------------------------------------------
     @staticmethod
