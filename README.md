@@ -77,13 +77,13 @@ Capitalisation doesn't matter. `dob`, `DOB`, `D.O.B.`, `date of birth`, `Year of
 
 - **QR codes and barcodes** are decoded offline. A code holding private details, or an Aadhaar secure QR, is listed and covered completely in the safe copy. Plain link codes are left alone.
 - **QR codes too dense or blurred to decode** (like the Aadhaar secure QR in a phone photo) are still found by their black-and-white checker texture. On an ID card they're listed as "Aadhaar QR code", and elsewhere as "QR code that couldn't be read". Either way the safe copy covers them.
-- **ID-card photos** are also read as a 2× grey copy and in overlapping halves, and words the first pass missed are added. Initials next to a name ("Ramesh Kumar N P") are covered with the name. A 6-digit PIN at the end of an address is caught without a "PIN" label. If a piece of a found Aadhaar number appears elsewhere (for example the small copy under the second photo, misread as "2SS4"), the whole printed number there is covered too.
+- **ID-card photos** are also read as a 2× grey copy and in overlapping halves, and words the first pass missed are added. Initials next to a name ("Ramesh Kumar N P") are covered with the name. A 6-digit PIN at the end of an address is caught without a "PIN" label. Aadhaar cards print the number again in tiny type under a small second photo. OCR can't read it, so on an image that shows an Aadhaar number, the strip under any photo much smaller than the main one is covered too ("Small copy of the Aadhaar number"). If a piece of a found Aadhaar number appears elsewhere (for example the small copy under the second photo, misread as "2SS4"), the whole printed number there is covered too.
 - **Faces** are found with a 1 MB offline model. They're listed as "Photo on an ID card" when the file shows an ID, else "Face in a picture".
 - **Signatures** are found next to their label ("Signature", "Signed", "हस्ताक्षर") where there's ink.
 - **Hard photos:** if a photo gives almost no text, it's read again cleaned up (contrast, sharpening, enlarging) and turned 90°, 180° and 270°.
 - **Hindi:** tray → "Read Hindi in images (install)…" adds Windows' Hindi OCR (needs your OK in a Windows prompt). Images are then read in English and Hindi. Other installed Indian languages are used too.
 
-Names are also found from their labels, in English or Hindi ("Name:", "Father's name:", "S/O", "D/O", "W/O", "Dear …", "नाम:", "पिता का नाम:"). Each card row has a "not private" link: names and places are added to `never_flag_words` in settings, and other values to the ignore list, so they aren't flagged again. Clicked it by mistake? The row then shows "won't be flagged again · undo"; **undo** flags the value again and ticks the row back on.
+Names are also found from their labels, in English or Hindi ("Name:", "Father's name:", "S/O", "D/O", "W/O", "Dear …", "नाम:", "पिता का नाम:"). Rows for names, places, dates and other low-risk details have a **not private** link. Names and places are added to `never_flag_words`, and other values to the ignore list as a fingerprint with a masked hint (for example `Aadhaar number: XXXX XXXX 2997`, never the real value). Clicked it by mistake? Click **undo**. **ID numbers (Aadhaar, PAN, card, bank, passport…) have no "not private" link**: untick them to keep them for one file only. Anything marked "not private" still appears on file cards, unticked, with "marked not private · flag again", so nothing is left in a file without you seeing it. Review or remove all of them under tray → **Not-private items…**.
 
 ## Browser uploads (extension)
 
@@ -132,7 +132,7 @@ When you pick a file to upload, attach or send, a small **"SENSIQ is checking…
 
 ### Replacing details before you share
 
-The card lists every detail with a tick box, all ticked. The **✕** in its top-right corner closes the report without doing anything, so you can pick a different file. In an upload window, just selecting another file also replaces the report with the new file's. Untick anything you want to keep, then press the button:
+The card lists every detail with a tick box, all ticked. Only the tick box itself changes it; clicking the row's text doesn't. Whenever something is unticked, a red line above the button says exactly what **will not** be replaced, for example "⚠ Will NOT be replaced: Person's name". The **✕** in its top-right corner closes the report without doing anything, so you can pick a different file. In an upload window, just selecting another file also replaces the report with the new file's. Untick anything you want to keep, then press the button:
 
 | Shared by | Button | What is shared instead |
 |---|---|---|

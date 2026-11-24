@@ -24,7 +24,7 @@ class DetectorWorker(threading.Thread):
         self.engine_lock = threading.Lock()  # the file scanner shares this engine
         self.ready = threading.Event()
 
-    def detect_now(self, text: str):
+    def detect_now(self, text: str, mark_ignored: bool = False):
         """Synchronous detection of a whole document for other threads (file and image scans):
         every character is checked. Typing checks waiting meanwhile get the engine between chunks."""
         self.ready.wait(120)
@@ -34,7 +34,7 @@ class DetectorWorker(threading.Thread):
             return []
         if len(text) <= engine.CHUNK:
             with self.engine_lock:
-                return engine.detect(text, limit=0)
+                return engine.detect(text, limit=0, mark_ignored=mark_ignored)
         import dataclasses
         out = []
         pos = 0
@@ -44,7 +44,7 @@ class DetectorWorker(threading.Thread):
                 cut = text.rfind("\n", pos + engine.CHUNK // 2, pos + engine.CHUNK)
                 end = cut + 1 if cut > pos else pos + engine.CHUNK
             with self.engine_lock:  # released between chunks so typing stays responsive
-                found = engine.detect(text[pos:end], limit=0)
+                found = engine.detect(text[pos:end], limit=0, mark_ignored=mark_ignored)
             out.extend(dataclasses.replace(f, start=f.start + pos, end=f.end + pos) for f in found)
             pos = end
         return out

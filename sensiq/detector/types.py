@@ -15,6 +15,7 @@ KIND_INFO = {
     "CARD": ("Card number", HIGH, "card number", 88),
     "AADHAAR": ("Aadhaar number", HIGH, "Aadhaar", 86),
     "AADHAAR_QR": ("Aadhaar QR code", HIGH, "Aadhaar QR", 85),
+    "AADHAAR_COPY": ("Small copy of the Aadhaar number", HIGH, "Aadhaar", 85),
     "QR_CODE": ("QR code that couldn't be read", MEDIUM, "QR code", 56),
     "PHOTO_ID": ("Photo on an ID card", HIGH, "photo", 83),
     "FACE": ("Face in a picture", MEDIUM, "face", 60),
@@ -57,6 +58,7 @@ class Finding:
     text: str
     score: float = 1.0
     source: str = "rule"  # "rule", "ner" or "presidio"
+    ignored: bool = False  # files: a value you marked "not private" (shown unticked, never hidden)
 
     @property
     def label(self) -> str:

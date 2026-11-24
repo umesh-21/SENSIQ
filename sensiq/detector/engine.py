@@ -80,7 +80,7 @@ class DetectionEngine:
                 self.presidio_error = f"{type(exc).__name__}: {exc}"
                 log.warning("Presidio detectors unavailable: %s", self.presidio_error)
 
-    def detect(self, text: str, limit: Optional[int] = None) -> List[Finding]:
+    def detect(self, text: str, limit: Optional[int] = None, mark_ignored: bool = False) -> List[Finding]:
         """Findings in text. limit caps the characters checked (default: max_chars, for live
         typing); 0 means no cap. Use detect_all() for whole documents."""
         if limit is None:
@@ -104,9 +104,15 @@ class DetectionEngine:
                 findings.extend(f for f in self.presidio.detect(text) if enabled.get(f.kind, True))
             except Exception:
                 log.exception("Presidio analysis failed")
-        findings = [f for f in findings if not self.ignore.contains(f.fingerprint())
-                    and not _PLACEHOLDER.search(f.text) and not self._never(f)]
-        return resolve_overlaps(extend_initials(text, findings))
+        findings = [f for f in findings if not _PLACEHOLDER.search(f.text)]
+        skip = lambda f: self.ignore.contains(f.fingerprint()) or self._never(f)  # noqa: E731
+        if not mark_ignored:  # typing: values you marked "not private" are simply not shown
+            findings = [f for f in findings if not skip(f)]
+        out = resolve_overlaps(extend_initials(text, findings))
+        if mark_ignored:      # files: still listed, unticked, so nothing is skipped without you seeing it
+            import dataclasses
+            out = [dataclasses.replace(f, ignored=True) if skip(f) else f for f in out]
+        return out
 
     def _never(self, f: Finding) -> bool:
         """Names/places you told SENSIQ never to flag (settings: never_flag_words)."""
@@ -120,7 +126,7 @@ class DetectionEngine:
 
     CHUNK = 15000  # characters per detection pass for whole documents
 
-    def detect_all(self, text: str) -> List[Finding]:
+    def detect_all(self, text: str, mark_ignored: bool = False) -> List[Finding]:
         """Whole documents (files, PDFs, OCR'd images): every character is checked, in
         line-aligned chunks, unlike detect() which is capped for live typing."""
         import dataclasses
@@ -131,7 +137,7 @@ class DetectionEngine:
             if end - pos > self.CHUNK:
                 cut = text.rfind("\n", pos + self.CHUNK // 2, pos + self.CHUNK)
                 end = cut + 1 if cut > pos else pos + self.CHUNK
-            for f in self.detect(text[pos:end], limit=0):
+            for f in self.detect(text[pos:end], limit=0, mark_ignored=mark_ignored):
                 out.append(dataclasses.replace(f, start=f.start + pos, end=f.end + pos) if pos else f)
             pos = end
         return out

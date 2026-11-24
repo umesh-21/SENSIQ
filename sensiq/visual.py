@@ -318,6 +318,43 @@ def findings_for(extracted, detected) -> list:
         elif kind == "SIGNATURE":
             out.append(Finding(s, e, "SIGNATURE", "handwritten signature", 0.8, "visual"))
     out.extend(id_fragments(extracted, detected + out))
+    out.extend(small_photo_numbers(extracted, detected))
+    return out
+
+
+def _item_box(extracted, s: int, e: int):
+    boxes = [b for ws, we, b in extracted.words if ws >= s and we <= e]
+    if not boxes:
+        return None
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
+def small_photo_numbers(extracted, detected) -> list:
+    """Aadhaar cards print the number a second time in tiny type under a small "ghost" copy
+    of the photo. OCR usually can't read it, so on a single image that shows an Aadhaar
+    number, the strip under any photo much smaller than the main one is covered too."""
+    from .detector.types import Finding
+    from .filescan import MARK
+    if extracted.kind != "image" or extracted.frame_words or extracted.pages:
+        return []
+    if not any(f.kind in ("AADHAAR", "AADHAAR_QR") for f in detected):
+        return []
+    faces = [b for kind, s, e, _ in extracted.visual if kind == "FACE" for b in [_item_box(extracted, s, e)] if b]
+    if len(faces) < 2:
+        return []
+    area = lambda b: (b[2] - b[0]) * (b[3] - b[1])  # noqa: E731
+    biggest = max(area(b) for b in faces)
+    out = []
+    for l, t, r, b in faces:
+        if area((l, t, r, b)) > 0.5 * biggest:
+            continue
+        w, h = r - l, b - t
+        strip = (max(0.0, l - 0.6 * w), b + 0.35 * h, r + 0.6 * w, b + 1.0 * h)
+        start = len(extracted.text) + 1
+        extracted.text += "\n" + MARK
+        extracted.words.append((start, start + len(MARK), strip))
+        out.append(Finding(start, start + len(MARK), "AADHAAR_COPY", "under the small photo", 0.9,
+                           "visual"))
     return out
 
 

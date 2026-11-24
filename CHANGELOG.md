@@ -3,6 +3,16 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
+## [1.5.0]
+
+### Nothing is skipped without you seeing it
+- **Details you marked "not private" are still listed on file cards**, unticked, with "marked not private · flag again". Before, they disappeared from the card and stayed in the shared file.
+- **ID numbers can't be marked "not private"** any more (Aadhaar, PAN, card, bank, passport…). Untick one to keep it in a single file.
+- **Only the tick box changes a row.** Clicking a row's text no longer unticks it by accident.
+- **A red line names what won't be replaced**, e.g. "⚠ Will NOT be replaced: Person's name", whenever something is unticked.
+- **Tray → Not-private items…** lists everything you marked, showing only masked values like XXXX XXXX 2997, and lets you remove items one at a time.
+- **The tiny copy of the Aadhaar number** under the small second photo is now covered too.
+
 ## [1.4.0]
 
 ### PII Guard is now SENSIQ

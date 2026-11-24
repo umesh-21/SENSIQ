@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from . import filescan, winutil
+from .detector.types import HIGH
 from .paths import default_safe_copies_dir, safe_copies_dir, work_dir
 
 log = logging.getLogger(__name__)
@@ -190,7 +191,8 @@ class FileScanWorker(_Logged):
                 self.events.put(("scan_progress", f"Checking {len(files)} files for private details…"))
             for p in files:
                 results.append(self._scan_file(p))
-        flagged = [r for r in results if r.findings]
+        # a card if anything is new, or an ID-type value you once marked "not private" is in it
+        flagged = [r for r in results if any(not f.ignored or f.severity == HIGH for f in r.findings)]
         unchecked = [r for r in results if r.unchecked]
         if kind != "image":  # problems inside ZIPs (encrypted members, damaged archive)
             for raw in payload:
@@ -211,7 +213,12 @@ class FileScanWorker(_Logged):
                 ctx.reply("original")  # nothing private: the page gets the file straight away
             if kind != "image" and ctx.kind in ANNOUNCE_KINDS and results and not unchecked:
                 what = results[0].name if len(results) == 1 else f"these {len(results)} files"
-                self.events.put(("scan_clean", f"✓ No personal information found in {what}. It's fine to share."))
+                if any(r.findings for r in results):   # only values you marked "not private"
+                    msg = (f"✓ Only details you marked \"not private\" were found in {what}. "
+                           "Tray → Not-private items to review them.")
+                else:
+                    msg = f"✓ No personal information found in {what}. It's fine to share."
+                self.events.put(("scan_clean", msg))
 
     # ---- which files ----------------------------------------------------------------------
     def _expand(self, paths: Sequence[str]) -> List[Path]:
@@ -283,7 +290,7 @@ class FileScanWorker(_Logged):
             self.events.put(("scan_progress", f"Checking all {n} pages of {self._display_name(path)} for "
                                               "private details. Long or scanned files can take a moment…"))
         ex = filescan.extract_file(path, float(opts.get("max_file_mb", 200)), max_pages)
-        found = self.detect(ex.text) if ex.text.strip() else []
+        found = self.detect(ex.text, mark_ignored=True) if ex.text.strip() else []
         found = found + visual.findings_for(ex, found)
         res = FileResult(self._display_name(path), found, ex.note, ex.method, path=path, extracted=ex,
                          can_redact=ex.can_redact, unchecked=ex.unchecked)
@@ -305,7 +312,7 @@ class FileScanWorker(_Logged):
         if digest and key in self._cache:
             return self._cache[key]
         ex = filescan.extract_image(image)
-        found = self.detect(ex.text) if ex.text.strip() else []
+        found = self.detect(ex.text, mark_ignored=True) if ex.text.strip() else []
         found = found + visual.findings_for(ex, found)
         res = FileResult("Copied image", found, ex.note, ex.method, image=image, extracted=ex,
                          unchecked=ex.unchecked)
@@ -345,9 +352,16 @@ class FileScanWorker(_Logged):
         return d
 
     def _redact_job(self, ctx: ShareContext, results: List[FileResult], chosen: Dict[int, list]) -> None:
+        from collections import Counter
+
         from . import redact
         style = self._style()
         replaced = missed = 0
+        # kinds only (never values): makes "why wasn't X hidden?" answerable from the log
+        picked = {id(f) for items in chosen.values() for f in items}
+        ticked = Counter(f.kind for items in chosen.values() for f in items)
+        unticked = Counter(f.kind for r in results for f in r.findings if id(f) not in picked)
+        log.info("safe copy: replacing %s; not ticked %s", dict(ticked) or "nothing", dict(unticked) or "none")
 
         if ctx.kind == "image":
             r = results[0]

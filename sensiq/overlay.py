@@ -39,7 +39,8 @@ def _shown_original(f: Finding) -> str:
 _MARKS = str.maketrans("", "", "")
 VISUAL_WHERE = {"AADHAAR_QR": "QR code in the picture", "QR_CODE": "QR code in the picture",
                 "PHOTO_ID": "photo in the picture", "FACE": "face in the picture",
-                "SIGNATURE": "signature in the picture"}
+                "SIGNATURE": "signature in the picture",
+                "AADHAAR_COPY": "under the small second photo on the card"}
 CONTEXT_MAX = 5  # occurrences shown per row under "where"
 
 
@@ -405,12 +406,37 @@ class Overlay:
         setters = []    # functions(bool) that set one row's tick
         action_btn = {}
 
+        ui = {}         # widgets made later: "warn", "sep", "relayout"
+
         def refresh_button():
             n = sum(len(v["items"]) for v in ticks.values() if v["on"])
             btn = action_btn.get("w")
             if btn is not None:
                 base = self.ACTION_TEXT.get(ctx.kind, "Replace")
                 btn.configure(text=f"{base} ({n})" if n else base)
+            warn = ui.get("warn")
+            if warn is None:
+                return
+            off = [v for v in ticks.values() if not v["on"]]
+            if ticks and len(off) == len(ticks):
+                text = "Nothing is ticked: nothing will be replaced."
+            elif off:
+                names = []
+                for v in off:
+                    lbl = v["items"][0].label
+                    if lbl not in names:
+                        names.append(lbl)
+                text = "Will NOT be replaced: " + ", ".join(names[:6]) + (" and more" if len(names) > 6 else "")
+            else:
+                text = ""
+            if text:
+                warn.configure(text="⚠ " + text)
+                if not warn.winfo_ismapped():
+                    warn.pack(fill="x", before=ui["sep"], pady=(px(6), 0))
+            else:
+                warn.pack_forget()
+            if ui.get("relayout"):
+                ui["relayout"]()
 
         def keep_open(_e=None):
             """Any interaction restarts the card's auto-close timer."""
@@ -450,9 +476,11 @@ class Overlay:
             f = items[0]
             holder = tk.Frame(parent, bg=SURFACE)
             holder.pack(fill="x", pady=(0, px(3)))
-            row = tk.Frame(holder, bg=SURFACE, cursor="hand2")
+            row = tk.Frame(holder, bg=SURFACE)
             row.pack(fill="x")
-            box = tk.Label(row, text="☑", font=("Segoe UI Symbol", 11), fg=ACTION, bg=SURFACE, padx=px(2))
+            # only the tick box toggles (a click elsewhere on the row used to untick it by accident)
+            box = tk.Label(row, text="☑", font=("Segoe UI Symbol", 12), fg=ACTION, bg=SURFACE, padx=px(3),
+                           cursor="hand2")
             box.pack(side="left")
             tk.Frame(row, bg=SEV_COLOR[f.severity], width=px(3)).pack(side="left", fill="y", padx=(px(4), 0))
             tk.Label(row, text=f.label, font=self.f_body, fg=INK, bg=SURFACE, padx=px(8)).pack(side="left")
@@ -463,7 +491,8 @@ class Overlay:
             new.pack(side="left")
             if len(items) > 1:
                 tk.Label(row, text=f"  ×{len(items)}", font=self.f_label, fg=MUTED, bg=SURFACE).pack(side="left")
-            state = {"on": True, "items": items}
+            ignored = any(getattr(i, "ignored", False) for i in items)
+            state = {"on": not ignored, "items": items}
             ticks[key] = state
 
             def set_on(on: bool):
@@ -472,46 +501,58 @@ class Overlay:
                 orig.configure(font=self.f_mono_strike if on else self.f_mono)
                 new.configure(fg=ACTION if on else LINE)
             setters.append(set_on)
+            set_on(state["on"])
 
             def toggle(_e=None):
                 set_on(not state["on"])
                 refresh_button()
                 keep_open()
-            for widget in (row,) + tuple(row.winfo_children()):
-                widget.bind("<Button-1>", toggle)
+                return "break"
+            box.bind("<Button-1>", toggle)
 
-            if on_not_private is not None:
-                marked = {"on": False}
+            # "not private": never for ID-type numbers (Aadhaar, PAN, card, bank...); a value marked
+            # earlier is shown unticked with "flag again", so it can't be skipped without you seeing it
+            can_mark = f.severity != HIGH and on_not_private is not None
+            if can_mark or ignored:
+                marked = {"on": ignored}
 
                 def not_private(_e=None):
                     keep_open()
-                    if not marked["on"]:      # mark: never flag this value again
+                    if can_mark and not marked["on"]:
                         marked["on"] = True
                         set_on(False)
                         on_not_private(items)
                         link.configure(text="won't be flagged again", fg=MUTED, cursor="arrow")
                         if on_flag_again is not None:
+                            undo.configure(text="undo")
                             undo.pack(side="right", before=link)
                     refresh_button()
                     return "break"
 
-                def flag_again(_e=None):    # undo a mistaken "not private"
+                def flag_again(_e=None):
                     keep_open()
                     if marked["on"]:
                         marked["on"] = False
-                        on_flag_again(items)
+                        if on_flag_again is not None:
+                            on_flag_again(items)
                         set_on(True)
-                        link.configure(text="not private", fg=MUTED, cursor="hand2")
                         undo.pack_forget()
+                        if can_mark:
+                            link.configure(text="not private", fg=MUTED, cursor="hand2")
+                        else:
+                            link.pack_forget()
                     refresh_button()
                     return "break"
-                undo = tk.Label(row, text="undo", font=self.f_small, fg=ACTION, bg=SURFACE,
-                                cursor="hand2", padx=0)
+                undo = tk.Label(row, text="flag again" if ignored else "undo", font=self.f_small, fg=ACTION,
+                                bg=SURFACE, cursor="hand2", padx=0)
                 undo.bind("<Button-1>", flag_again)
-                link = tk.Label(row, text="not private", font=self.f_small, fg=MUTED, bg=SURFACE,
-                                cursor="hand2", padx=px(8))
+                link = tk.Label(row, text="marked not private" if ignored else "not private", font=self.f_small,
+                                fg=SEV_COLOR[MEDIUM] if ignored else MUTED, bg=SURFACE,
+                                cursor="arrow" if ignored else "hand2", padx=px(8))
                 link.pack(side="right")
                 link.bind("<Button-1>", not_private)
+                if ignored and on_flag_again is not None:
+                    undo.pack(side="right", before=link)
 
             # ---- "where": the line each occurrence comes from ----
             detail = {"frame": None}
@@ -624,12 +665,16 @@ class Overlay:
         fit()
         bind_wheel(canvas)
         bind_wheel(inner)
+        ui["relayout"] = relayout
 
         if ctx.kind != "image" and any(r.path is not None and r.path.suffix.lower() == ".pdf" for r in results):
             tk.Label(body, text="PDF pages are turned into images so hidden text is really removed.",
                      font=self.f_small, fg=MUTED, bg=SURFACE, anchor="w", wraplength=px(360),
                      justify="left").pack(fill="x", pady=(px(4), 0))
-        tk.Frame(body, bg=LINE, height=1).pack(fill="x", pady=px(10))
+        ui["warn"] = tk.Label(body, text="", font=self.f_label, fg=SEV_COLOR[HIGH], bg=SURFACE, anchor="w",
+                              wraplength=px(360), justify="left")
+        ui["sep"] = tk.Frame(body, bg=LINE, height=1)
+        ui["sep"].pack(fill="x", pady=px(10))
         footer = tk.Frame(body, bg=SURFACE)
         footer.pack(fill="x")
 
@@ -717,6 +762,103 @@ class Overlay:
         self._show(w, x, y, ww, hh)
         self.toast_win = w
         self._toast_job = self.root.after(ms, self._close_toast)
+
+    # ---- "not private" list (tray) ------------------------------------------------------
+    def not_private_list(self, entries, on_remove: Callable[[str, str], None]) -> None:
+        """entries: [(kind, key, text shown)]. Each row has Remove; nothing here shows a real
+        number, only its masked form."""
+        old = getattr(self, "np_win", None)
+        if old is not None:
+            try:
+                old.destroy()
+            except Exception:
+                pass
+        px = self.px
+        w = self._new_window(ACTION)
+        body = tk.Frame(w, bg=SURFACE, padx=px(16), pady=px(14))
+        body.pack(padx=(px(4), 1), pady=1, fill="both")
+        top = tk.Frame(body, bg=SURFACE)
+        top.pack(fill="x")
+        tk.Label(top, text="Not-private items", font=self.f_title, fg=INK, bg=SURFACE).pack(side="left")
+        x = tk.Label(top, text="✕", font=("Segoe UI", 11), fg=MUTED, bg=SURFACE, cursor="hand2", padx=px(4))
+        x.pack(side="right")
+        tk.Label(body, text="SENSIQ doesn't flag these when you type. In files they're still listed, unticked. "
+                            "Remove an item to have it flagged and replaced again.",
+                 font=self.f_small, fg=MUTED, bg=SURFACE, wraplength=px(380), justify="left",
+                 anchor="w").pack(fill="x", pady=(px(2), px(8)))
+        area = tk.Frame(body, bg=SURFACE, highlightthickness=1, highlightbackground=LINE)
+        area.pack(fill="both", expand=True)
+        canvas = tk.Canvas(area, bg=SURFACE, highlightthickness=0, bd=0)
+        sb = tk.Scrollbar(area, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        inner = tk.Frame(canvas, bg=SURFACE, padx=px(8), pady=px(6))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        empty = tk.Label(inner, text="Nothing is marked not private.", font=self.f_body, fg=MUTED, bg=SURFACE)
+        rows = {}   # row frame -> (kind, key) still listed
+
+        def close(_e=None):
+            try:
+                w.destroy()
+            except Exception:
+                pass
+            self.np_win = None
+        x.bind("<Button-1>", close)
+
+        def fit():
+            inner.update_idletasks()
+            cw, ch = inner.winfo_reqwidth(), inner.winfo_reqheight()
+            canvas.configure(width=max(cw, px(380)), height=min(ch, px(300)), scrollregion=(0, 0, cw, ch))
+            if ch > px(300) and not sb.winfo_ismapped():
+                sb.pack(side="right", fill="y")
+
+        def drop(row, kind, key):
+            on_remove(kind, key)
+            row.destroy()
+            rows.pop(row, None)
+            if not rows:
+                empty.pack(anchor="w")
+            fit()
+
+        for kind, key, text in entries:
+            row = tk.Frame(inner, bg=SURFACE)
+            row.pack(fill="x", pady=(0, px(3)))
+            tk.Label(row, text=_preview(text, 52), font=self.f_body, fg=INK, bg=SURFACE, anchor="w").pack(side="left")
+            rm = tk.Label(row, text="Remove", font=self.f_small, fg=ACTION, bg=SURFACE, cursor="hand2", padx=px(10))
+            rm.pack(side="right")
+            rm.bind("<Button-1>", lambda e, r=row, k=kind, kk=key: drop(r, k, kk))
+            rows[row] = (kind, key)
+        if not rows:
+            empty.pack(anchor="w")
+        canvas.pack(side="left", fill="both", expand=True)
+        fit()
+
+        def wheel(e):
+            canvas.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1), "units")
+            return "break"
+        for wd in (canvas, inner):
+            wd.bind("<MouseWheel>", wheel)
+        footer = tk.Frame(body, bg=SURFACE)
+        footer.pack(fill="x", pady=(px(10), 0))
+
+        def remove_all():
+            for row, (kind, key) in list(rows.items()):
+                try:
+                    on_remove(kind, key)
+                except Exception:
+                    pass
+                row.destroy()
+            rows.clear()
+            empty.pack(anchor="w")
+            fit()
+        if entries:
+            self._button(footer, "Remove all", remove_all, filled=False).pack(side="left")
+        self._button(footer, "Close", close, filled=True).pack(side="right")
+        w.update_idletasks()
+        ww, hh = w.winfo_reqwidth(), w.winfo_reqheight()
+        left, top_, right, bottom = winutil.work_area()
+        xx, yy = self._clamp(right - ww - px(24), bottom - hh - px(24), ww, hh)
+        self._show(w, xx, yy, ww, hh)
+        self.np_win = w
 
     # ---- "checking…" note -------------------------------------------------------------
     def checking(self, message: str, ms: int = 600000) -> None:

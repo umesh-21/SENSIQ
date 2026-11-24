@@ -25,6 +25,11 @@ from .paths import data_dir
 log = logging.getLogger("sensiq")
 
 
+def masked_hint(f) -> str:
+    """What the not-private list shows for a value: its kind and masked form only."""
+    return f"{f.label}: {suggest(f, 'partial')}"
+
+
 def setup_logging(debug: bool) -> None:
     # The log records events and errors only. Typed text is never logged.
     root = logging.getLogger()
@@ -296,7 +301,7 @@ class App:
             self.watcher.commands.put(("replace", edits))
 
     def ignore_finding(self, f, always: bool) -> None:
-        self.ignore.add(f.fingerprint(), persist=always)
+        self.ignore.add(f.fingerprint(), persist=always, hint=masked_hint(f))
         self.findings = [x for x in self.findings if x.fingerprint() != f.fingerprint()]
         self.overlay.update(self.findings)
 
@@ -349,7 +354,7 @@ class App:
                 if norm.lower() not in {w.lower() for w in words}:
                     words.append(norm)
             else:
-                self.ignore.add(f.fingerprint(), persist=True)
+                self.ignore.add(f.fingerprint(), persist=True, hint=masked_hint(f))
         self.config.save()
 
     def flag_again(self, findings) -> None:
@@ -469,6 +474,22 @@ class App:
         self.overlay.toast("Safe copies will be saved in the default folder and deleted after 24 hours.",
                            "ok", ms=5000)
 
+    def _show_not_private(self) -> None:
+        """Tray: review and remove values marked "not private" (names and numbers)."""
+        names = [str(w) for w in self.config.data.get("never_flag_words") or []]
+        entries = [("name", w, f"Name or place: {w}") for w in names]
+        entries += [("fp", fp, hint or "A value saved before version 1.5 (hidden)") for fp, hint in self.ignore.entries()]
+
+        def remove(kind, key):
+            if kind == "name":
+                words = self.config.data.setdefault("never_flag_words", [])
+                words[:] = [w for w in words if str(w) != key]
+                self.config.save()
+            else:
+                self.ignore.remove(key)
+            self.watcher.commands.put(("refresh",))
+        self.overlay.not_private_list(entries, remove)
+
     def toggle_style(self) -> None:
         self.config.data["mask_style"] = "placeholder" if self._style() == "partial" else "partial"
         self.config.save()
@@ -533,6 +554,8 @@ class App:
             self.detector.request_reload()
             self.watcher.commands.put(("refresh",))
             self.overlay.toast("Settings reloaded.", "ok", ms=2000)
+        elif action == "not_private_list":
+            self._show_not_private()
         elif action == "clear_ignore":
             self.ignore.clear()
             self.watcher.commands.put(("refresh",))

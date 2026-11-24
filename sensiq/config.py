@@ -136,39 +136,48 @@ class Config:
 
 
 class IgnoreList:
-    """Values the user chose to ignore, stored only as SHA-256 fingerprints."""
+    """Values the user marked "not private". Stored as SHA-256 fingerprints, each with a
+    masked hint (e.g. "Aadhaar number: XXXX XXXX 2997") so the list can be reviewed in the
+    tray; the real value is never stored."""
 
-    def __init__(self, persisted: Iterable[str] = (), path: Optional[Path] = None):
-        self._persisted = set(persisted)
+    def __init__(self, persisted: Iterable = (), path: Optional[Path] = None):
+        if isinstance(persisted, dict):
+            self._persisted = {str(k): str(v or "") for k, v in persisted.items()}
+        else:                       # list of fingerprints (before 1.5.0)
+            self._persisted = {str(k): "" for k in persisted}
         self._session: set = set()
         self.path = path
 
     @classmethod
     def load(cls) -> "IgnoreList":
         path = data_dir() / "ignored.json"
-        items: list = []
+        items: object = []
         if path.exists():
             try:
                 items = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 log.warning("Ignore list unreadable; starting empty")
-        return cls(items, path)
+        return cls(items if isinstance(items, (list, dict)) else [], path)
 
     def contains(self, fp: str) -> bool:
         return fp in self._session or fp in self._persisted
 
-    def add(self, fp: str, persist: bool = False) -> None:
+    def add(self, fp: str, persist: bool = False, hint: str = "") -> None:
         self._session.add(fp)
         if persist:
-            self._persisted.add(fp)
+            self._persisted[fp] = hint or self._persisted.get(fp, "")
             self.save()
 
     def remove(self, fp: str) -> None:
         """Undo add(): the value is flagged again."""
         self._session.discard(fp)
         if fp in self._persisted:
-            self._persisted.discard(fp)
+            del self._persisted[fp]
             self.save()
+
+    def entries(self) -> list:
+        """[(fingerprint, hint)] of the saved items, for the tray's "Not-private items" list."""
+        return sorted(self._persisted.items(), key=lambda kv: (kv[1] == "", kv[1].lower()))
 
     def clear(self) -> None:
         self._session.clear()
@@ -179,6 +188,7 @@ class IgnoreList:
         if self.path is None:
             return
         try:
-            self.path.write_text(json.dumps(sorted(self._persisted)), encoding="utf-8")
+            self.path.write_text(json.dumps(dict(sorted(self._persisted.items())), ensure_ascii=False, indent=0),
+                                 encoding="utf-8")
         except OSError as exc:
             log.warning("Could not save ignore list: %s", exc)
