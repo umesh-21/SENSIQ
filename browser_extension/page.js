@@ -1,9 +1,9 @@
-// PII Guard - for sites that open files with window.showOpenFilePicker() instead of an
+// SENSIQ - for sites that open files with window.showOpenFilePicker() instead of an
 // upload button. The chosen files are checked the same way; the page then reads either
 // the original or the safe copy you chose.
 (() => {
-  if (typeof window.showOpenFilePicker !== "function" || window.__piiGuardPage) return;
-  window.__piiGuardPage = true;
+  if (typeof window.showOpenFilePicker !== "function" || window.__sensiqPage) return;
+  window.__sensiqPage = true;
   const realPicker = window.showOpenFilePicker.bind(window);
   let seq = 0;
 
@@ -15,11 +15,11 @@
       const onAnswer = (ev) => {
         const m = ev.data;
         if (!m || m.id !== id) return;
-        if (m.__piiGuardAck === true) { acked = true; return; }
-        if (m.__piiGuardAnswer === true) finish(m);
+        if (m.__sensiqAck === true) { acked = true; return; }
+        if (m.__sensiqAnswer === true) finish(m);
       };
       window.addEventListener("message", onAnswer);
-      window.postMessage({ __piiGuardAsk: true, id, files }, "*");
+      window.postMessage({ __sensiqAsk: true, id, files }, "*");
       // If the extension doesn't acknowledge at once, never hold the page: give it the originals.
       setTimeout(() => { if (!acked) finish({ action: "original" }); }, 3000);
     });

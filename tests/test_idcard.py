@@ -5,11 +5,11 @@ import threading
 
 import pytest
 
-from piiguard import filescan, ocr, visual
-from piiguard.config import Config, IgnoreList
-from piiguard.detector.engine import DetectionEngine, extend_initials
-from piiguard.detector.types import Finding
-from piiguard.masking import suggest
+from sensiq import filescan, ocr, visual
+from sensiq.config import Config, IgnoreList
+from sensiq.detector.engine import DetectionEngine, extend_initials
+from sensiq.detector.types import Finding
+from sensiq.masking import suggest
 
 
 def _ocr_ok():
@@ -73,8 +73,8 @@ def test_dense_qr_is_located_even_if_not_decodable():
 @pytest.mark.parametrize("id_words, kind", [(True, "AADHAAR_QR"), (False, "QR_CODE")])
 def test_unreadable_qr_is_reported_and_covered(tmp_path, engine, id_words, kind):
     pytest.importorskip("zxingcpp")
-    from piiguard import redact
-    from piiguard.sharewatch import FileScanWorker
+    from sensiq import redact
+    from sensiq.sharewatch import FileScanWorker
     src = tmp_path / "card.png"
     _card(id_words).save(src)
     res = FileScanWorker(engine.detect_all, engine.config, queue.Queue(), threading.Event())._scan_file(src)
@@ -140,7 +140,7 @@ def test_misread_piece_of_aadhaar_is_covered():
 
 # ---- "where" drop-down on the card -----------------------------------------------------------
 def test_where_shows_the_line_and_page():
-    from piiguard.overlay import where_found
+    from sensiq.overlay import where_found
     text = "Certificate\nThis is to certify that\nPriya Sharma has presented a paper at the Bhilai meet"
     ex = filescan.Extracted(text=text, kind="pdf")
     ex.pages = [filescan.PdfPage(index=0, start=0, text_len=12), filescan.PdfPage(index=1, start=12, text_len=99)]
@@ -154,7 +154,7 @@ def test_where_shows_the_line_and_page():
 
 
 def test_where_short_line_gets_line_above_and_secrets_stay_hidden():
-    from piiguard.overlay import where_found
+    from sensiq.overlay import where_found
     text = "Address: C/O Suresh, Kerala\n688525\nwifi password is Tiger@2024"
     ex = filescan.Extracted(text=text, kind="image")
     s = text.index("688525")
@@ -166,7 +166,7 @@ def test_where_short_line_gets_line_above_and_secrets_stay_hidden():
 
 
 def test_where_for_pictures():
-    from piiguard.overlay import where_found
+    from sensiq.overlay import where_found
     ex = filescan.Extracted(text="Government of India\n\ue000\ue001", kind="image")
     info = where_found(Finding(20, 22, "AADHAAR_QR", "QR code on an ID card", 0.9, "visual"), ex)
     assert info["match"] == "QR code in the picture"
@@ -174,7 +174,7 @@ def test_where_for_pictures():
 
 def test_not_private_can_be_undone(tmp_path):
     import types
-    from piiguard.app import App
+    from sensiq.app import App
     cfg = Config.defaults()
     ign = IgnoreList(path=tmp_path / "ignored.json")
     fake = types.SimpleNamespace(config=cfg, ignore=ign)

@@ -3,20 +3,27 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
+## [1.4.0]
+
+### PII Guard is now SENSIQ
+- New name everywhere: the tray icon, the cards, the Start menu, the program (`SENSIQ.exe`), the setup file (`SENSIQ-Setup-1.4.0.exe`) and the install folder (`%LOCALAPPDATA%\Programs\SENSIQ`). The GitHub page is now **github.com/umesh-21/SENSIQ**; the old address still works.
+- **Nothing to redo:** your settings, ignored items, "not private" names, safe-copies folder choice and "Start with Windows" are carried over automatically.
+- **Browser extension users:** add the extension again once from its new folder. Right-click the shield → **Check uploads in my browser (set up)…**, then **Load unpacked** in `chrome://extensions` (or Edge/Brave). Remove the old "PII Guard" entry there.
+
 ## [1.3.0]
 
 ### New
 - **Close a report and pick another file.** The report card now has a **✕** in its corner. In an upload window, choosing a different file replaces the report with the new file's straight away.
 - **Choose where safe copies are saved.** The setup asks for a folder. You can change it any time from the tray (**Safe copies folder → Change folder…**). Copies in a folder you choose are kept, and the default folder is still cleared after 24 hours.
-- **"Checking…" before you upload.** As soon as you pick a file to upload or attach, PII Guard says it's checking and asks you to wait. Then you get the report, or "No personal information found" for a clean file.
+- **"Checking…" before you upload.** As soon as you pick a file to upload or attach, SENSIQ says it's checking and asks you to wait. Then you get the report, or "No personal information found" for a clean file.
 
 ## [1.2.0]
 
 ### New
-- **Automatic updates from GitHub.** PII Guard checks for a new version twice a day and shows what's new. Click **Update now** to download it, check it and install it. Turn this off in the tray menu ("Check for updates automatically").
+- **Automatic updates from GitHub.** SENSIQ checks for a new version twice a day and shows what's new. Click **Update now** to download it, check it and install it. Turn this off in the tray menu ("Check for updates automatically").
 - **"▸ where" on every report row.** It shows the line each name, place, date of birth or number was found in, with the page number for PDFs.
 - **Undo for "not private".** Clicked it by mistake? Click **undo** on the same row and the value is flagged again.
-- **Real setup file** (`PIIGuard-Setup-1.2.0.exe`) with an uninstaller. Copy it to any Windows 10/11 PC and run it, no admin rights needed.
+- **Real setup file** (`SENSIQ-Setup-1.2.0.exe`) with an uninstaller. Copy it to any Windows 10/11 PC and run it, no admin rights needed.
 
 ### Better detection on ID cards
 - QR codes that are too dense or blurred to read (like the Aadhaar secure QR in a phone photo) are now found and covered.

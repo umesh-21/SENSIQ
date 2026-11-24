@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from piiguard import filescan
-from piiguard.config import Config, IgnoreList
-from piiguard.detector.engine import resolve_overlaps
-from piiguard.detector.rules import RuleDetector
-from piiguard.paths import models_dir
+from sensiq import filescan
+from sensiq.config import Config, IgnoreList
+from sensiq.detector.engine import resolve_overlaps
+from sensiq.detector.rules import RuleDetector
+from sensiq.paths import models_dir
 
 MODELS = models_dir()
 HAS_NER = (MODELS / "ner" / "model.onnx").exists()
@@ -39,7 +39,7 @@ def test_plain_year_and_date_are_not_dob():
 @pytest.fixture(scope="module")
 def presidio():
     pytest.importorskip("presidio_analyzer")
-    from piiguard.detector.presidio_layer import PresidioDetector
+    from sensiq.detector.presidio_layer import PresidioDetector
     try:
         return PresidioDetector()
     except RuntimeError as exc:
@@ -60,7 +60,7 @@ def test_presidio_quiet_on_clean_text(presidio):
 def ner():
     if not HAS_NER:
         pytest.skip("name model not downloaded")
-    from piiguard.detector.ner import NerModel
+    from sensiq.detector.ner import NerModel
     return NerModel(MODELS / "ner", threshold=0.6, labels={"PER": True, "LOC": True})
 
 
@@ -121,7 +121,7 @@ def test_text_file_and_limits(tmp_path):
 
 def _ocr_ok():
     try:
-        from piiguard import ocr
+        from sensiq import ocr
         return ocr.status()["ocr_loaded"]
     except Exception:
         return False
@@ -148,7 +148,7 @@ def test_image_and_scanned_pdf(tmp_path):
 
 def test_dialog_folder_display_names(tmp_path, monkeypatch):
     """Browser upload dialogs show special folders by name, not path."""
-    from piiguard import sharewatch
+    from sensiq import sharewatch
     (tmp_path / "Downloads" / "forms").mkdir(parents=True)
     monkeypatch.setattr(sharewatch, "_folders_cache",
                         {"priya sharma": tmp_path, "downloads": tmp_path / "Downloads"})
@@ -159,13 +159,13 @@ def test_dialog_folder_display_names(tmp_path, monkeypatch):
 
 
 def test_real_known_folders():
-    from piiguard import sharewatch
+    from sensiq import sharewatch
     downloads = sharewatch._dialog_folder("Address: Downloads")
     assert downloads is not None and downloads.is_dir()
 
 
 def test_dialog_folder_and_resolve(tmp_path):
-    from piiguard.sharewatch import _dialog_folder, _resolve
+    from sensiq.sharewatch import _dialog_folder, _resolve
     (tmp_path / "card.png").write_bytes(b"x")
     assert _dialog_folder(f"Address: {tmp_path}") == tmp_path
     assert _resolve(tmp_path, "card") == [tmp_path / "card.png"]

@@ -1,4 +1,4 @@
-"""Link between the PII Guard browser extension and this app.
+"""Link between the SENSIQ browser extension and this app.
 
 * register_host(): tells Chrome, Edge, Brave and Chromium (current user only, no admin) where
   the native-messaging host is, so the extension can reach this app.
@@ -24,7 +24,7 @@ from .paths import data_dir, resource_dir, work_dir
 
 log = logging.getLogger(__name__)
 
-HOST_NAME = "com.piiguard.host"
+HOST_NAME = "com.sensiq.host"
 EXTENSION_ID = "anojebieecillflfojodicejpjkeimlo"
 BROWSER_KEYS = [
     r"Software\Google\Chrome\NativeMessagingHosts",
@@ -46,7 +46,7 @@ def _host_command() -> Path:
     launcher = data_dir() / "native-host.bat"
     py = Path(sys.executable)
     root = Path(__file__).resolve().parent.parent
-    launcher.write_text(f'@echo off\r\nset "PYTHONPATH={root}"\r\n"{py}" -m piiguard %*\r\n', encoding="ascii")
+    launcher.write_text(f'@echo off\r\nset "PYTHONPATH={root}"\r\n"{py}" -m sensiq %*\r\n', encoding="ascii")
     return launcher
 
 
@@ -57,7 +57,7 @@ def register_host() -> bool:
         manifest = data_dir() / "native-host.json"
         manifest.write_text(json.dumps({
             "name": HOST_NAME,
-            "description": "PII Guard - checks files you upload for personal details",
+            "description": "SENSIQ - checks files you upload for personal details",
             "path": str(_host_command()),
             "type": "stdio",
             "allowed_origins": [f"chrome-extension://{EXTENSION_ID}/"],

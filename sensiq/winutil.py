@@ -14,7 +14,7 @@ from typing import Tuple
 
 IS_WIN = sys.platform == "win32"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-RUN_VALUE = "PIIGuard"
+RUN_VALUE = "SENSIQ"
 
 if IS_WIN:
     from ctypes import wintypes
@@ -73,7 +73,7 @@ def set_dpi_awareness() -> None:
             pass
 
 
-def acquire_single_instance(name: str = "Local\\PIIGuard.SingleInstance") -> bool:
+def acquire_single_instance(name: str = "Local\\SENSIQ.SingleInstance") -> bool:
     global _mutex
     if not IS_WIN:
         return True
@@ -154,7 +154,7 @@ def work_area() -> Tuple[int, int, int, int]:
     return (0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1) - 48)
 
 
-def message_box(text: str, title: str = "PII Guard", error: bool = False) -> None:
+def message_box(text: str, title: str = "SENSIQ", error: bool = False) -> None:
     if IS_WIN:
         user32.MessageBoxW(None, text, title, 0x10 if error else 0x40)
     else:
@@ -167,7 +167,7 @@ def launch_command() -> str:
         return f'"{sys.executable}"'
     pyw = Path(sys.executable).with_name("pythonw.exe")
     exe = pyw if pyw.exists() else Path(sys.executable)
-    return f'"{exe}" -m piiguard'
+    return f'"{exe}" -m sensiq'
 
 
 def is_startup_enabled() -> bool:

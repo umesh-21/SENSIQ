@@ -1,4 +1,4 @@
-"""PII Guard main program.
+"""SENSIQ main program.
 
 Threads:
   * Tk main thread  - overlay UI, owns all windows
@@ -22,7 +22,7 @@ from .detector.types import HIGH
 from .masking import suggest
 from .paths import data_dir
 
-log = logging.getLogger("piiguard")
+log = logging.getLogger("sensiq")
 
 
 def setup_logging(debug: bool) -> None:
@@ -31,7 +31,7 @@ def setup_logging(debug: bool) -> None:
     root.setLevel(logging.DEBUG if debug else logging.INFO)
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     handler = logging.handlers.RotatingFileHandler(
-        data_dir() / "piiguard.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+        data_dir() / "sensiq.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")
     handler.setFormatter(fmt)
     root.addHandler(handler)
     if debug and sys.stderr is not None:
@@ -50,7 +50,10 @@ class App:
         from .worker import DetectorWorker
 
         self.args = args
+        from . import migrate
+        self.renamed = migrate.run()          # PII Guard (<= 1.3.0) -> SENSIQ: settings, registry
         self.config = Config.load()
+        migrate.after_settings(self.config)
         if args.no_ner:
             self.config.data["ner"]["enabled"] = False
         self.ignore = IgnoreList.load()
@@ -120,8 +123,13 @@ class App:
             self.tray.start()
         self.root.after(50, self._pump)
         self.root.after(3000, self._check_pause)
+        if self.renamed:
+            self.root.after(2500, lambda: self.overlay.toast(
+                "PII Guard is now called SENSIQ. Your settings were kept. If you used the browser extension, "
+                "add it again from its new folder: right-click the shield → Check uploads in my browser (set up)…",
+                "info", ms=20000))
         self.root.after(1500, lambda: self._notify(
-            "PII Guard is on. It checks what you type, and images and files you copy, drag or upload, "
+            "SENSIQ is on. It checks what you type, and images and files you copy, drag or upload, "
             "on this computer only. "
             "The shield in the system tray has the settings."))
         try:
@@ -171,7 +179,7 @@ class App:
         elif kind == "replace_done":
             _, ok, failed, single = ev
             if failed:
-                msg = ("PII Guard couldn't edit this field directly. The safe text is on your clipboard: "
+                msg = ("SENSIQ couldn't edit this field directly. The safe text is on your clipboard: "
                        "select the highlighted value and press Ctrl+V." if single else
                        f"Replaced {ok} of {ok + failed}. Use Replace on the remaining ones one at a time.")
                 self.overlay.toast(msg, "warn", ms=7000)
@@ -227,16 +235,16 @@ class App:
                                          on_skip=lambda i=info: self._skip_update(i),
                                          on_page=lambda i=info: winutil.open_path(i.page))
         elif kind == "update_none":
-            self.overlay.toast(f"You have the latest version of PII Guard ({__version__}).", "ok", ms=4000)
+            self.overlay.toast(f"You have the latest version of SENSIQ ({__version__}).", "ok", ms=4000)
         elif kind == "update_failed":
             self.updating = False
             self.overlay.update_status(None)
-            self.overlay.toast(f"Couldn't update PII Guard: {ev[1]}. Try again later from the tray menu.",
+            self.overlay.toast(f"Couldn't update SENSIQ: {ev[1]}. Try again later from the tray menu.",
                                "warn", ms=9000)
         elif kind == "update_progress":
             self.overlay.update_status(ev[1])
         elif kind == "update_ready":
-            self.overlay.update_status("Installing… PII Guard will restart in a moment.")
+            self.overlay.update_status("Installing… SENSIQ will restart in a moment.")
             try:
                 from . import updater
                 updater.install(ev[1])
@@ -328,7 +336,7 @@ class App:
 
         self.overlay.file_report(ctx, results, on_apply=apply, on_not_private=self.not_private,
                                  on_flag_again=self.flag_again, on_close=closed)
-        if os.environ.get("PIIGUARD_TEST_AUTOREPLACE") == "1":  # automated tests only
+        if os.environ.get("SENSIQ_TEST_AUTOREPLACE") == "1":  # automated tests only
             self.root.after(500, lambda: self.overlay.apply_report())
 
     def not_private(self, findings) -> None:
@@ -427,7 +435,7 @@ class App:
         holder.attributes("-topmost", True)
         try:
             chosen = filedialog.askdirectory(parent=holder, initialdir=str(current), mustexist=False,
-                                             title="Choose where PII Guard saves safe copies of your files")
+                                             title="Choose where SENSIQ saves safe copies of your files")
         finally:
             holder.destroy()
         if not chosen:
@@ -435,11 +443,11 @@ class App:
         target = Path(chosen)
         try:
             target.mkdir(parents=True, exist_ok=True)
-            probe = target / ".piiguard-write-test"
+            probe = target / ".sensiq-write-test"
             probe.write_text("ok", encoding="utf-8")
             probe.unlink()
         except OSError as exc:
-            self.overlay.toast(f"PII Guard can't save files in {target} ({exc.strerror or exc}). "
+            self.overlay.toast(f"SENSIQ can't save files in {target} ({exc.strerror or exc}). "
                                "Choose another folder.", "warn", ms=8000)
             return
         default = paths.default_safe_copies_dir()
@@ -472,10 +480,10 @@ class App:
     def _on_tray(self, action: str) -> None:
         if action == "status":
             if self.config.data.get("enabled", True):
-                self.overlay.toast("PII Guard is on. It checks what you type and the images and files you "
+                self.overlay.toast("SENSIQ is on. It checks what you type and the images and files you "
                                    "copy, drag or upload. Right-click the shield for options.", "ok", ms=5000)
             else:
-                self.overlay.toast("PII Guard is PAUSED: nothing is being checked. Right-click the shield and "
+                self.overlay.toast("SENSIQ is PAUSED: nothing is being checked. Right-click the shield and "
                                    "choose Resume protection.", "warn", ms=7000)
         elif action == "toggle":
             self._set_enabled(not self.config.data.get("enabled", True))
@@ -484,14 +492,14 @@ class App:
         elif action == "startup":
             enabled = not winutil.is_startup_enabled()
             winutil.set_startup(enabled)
-            self.overlay.toast("PII Guard will start when you sign in." if enabled else
-                               "PII Guard won't start automatically.", "info", ms=2500)
+            self.overlay.toast("SENSIQ will start when you sign in." if enabled else
+                               "SENSIQ won't start automatically.", "info", ms=2500)
         elif action == "opened_files":
             fs = self.config.data.setdefault("file_scan", {})
             fs["opened_files"] = not fs.get("opened_files", False)
             self.config.save()
-            self.overlay.toast("PII Guard will offer to check documents and pictures you open." if fs["opened_files"]
-                               else "PII Guard won't offer checks when you open files.", "info", ms=3500)
+            self.overlay.toast("SENSIQ will offer to check documents and pictures you open." if fs["opened_files"]
+                               else "SENSIQ won't offer checks when you open files.", "info", ms=3500)
         elif action == "browser_setup":
             self._browser_setup()
         elif action == "add_hindi":
@@ -512,7 +520,7 @@ class App:
             up = self.config.data.setdefault("updates", {})
             up["check"] = not up.get("check", True)
             self.config.save()
-            self.overlay.toast("PII Guard will check for new versions twice a day." if up["check"] else
+            self.overlay.toast("SENSIQ will check for new versions twice a day." if up["check"] else
                                "Automatic update checks are off. Use Check for updates now any time.",
                                "info", ms=4000)
         elif action == "selftest":
@@ -537,30 +545,30 @@ class App:
             self.tray.refresh()
 
     def _browser_setup(self) -> None:
-        """Opens a short guide for adding the PII Guard extension to Chrome / Edge / Brave."""
+        """Opens a short guide for adding the SENSIQ extension to Chrome / Edge / Brave."""
         import html
         from .browserlink import extension_dir, register_host
         register_host()
         folder = extension_dir()
         page = data_dir() / "browser-setup.html"
-        page.write_text(f"""<!doctype html><meta charset="utf-8"><title>PII Guard for your browser</title>
+        page.write_text(f"""<!doctype html><meta charset="utf-8"><title>SENSIQ for your browser</title>
 <style>body{{font:15px/1.5 Segoe UI,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;color:#1c2433}}
 code{{background:#eef1f5;padding:2px 6px;border-radius:4px}} li{{margin:8px 0}} h1{{font-size:22px}}
 .path{{display:block;padding:10px;background:#eef1f5;border-radius:6px;word-break:break-all}}</style>
 <h1>Check uploads in your browser</h1>
-<p>With the PII Guard extension, files you upload, drop or paste into any website are checked before
+<p>With the SENSIQ extension, files you upload, drop or paste into any website are checked before
 the site gets them, and you can send a safe copy instead. Everything stays on this computer.</p>
 <ol>
 <li>In Chrome open <code>chrome://extensions</code> (Edge: <code>edge://extensions</code>,
 Brave: <code>brave://extensions</code>).</li>
 <li>Turn on <b>Developer mode</b> (top right in Chrome, left side in Edge).</li>
 <li>Click <b>Load unpacked</b> and choose this folder:<span class="path">{html.escape(str(folder))}</span></li>
-<li>Done. "PII Guard" appears in the list. Keep PII Guard running in the tray.</li>
+<li>Done. "SENSIQ" appears in the list. Keep SENSIQ running in the tray.</li>
 </ol>
 <p>To remove it later, click Remove on the extension in the same page.</p>""", encoding="utf-8")
         winutil.open_path(page)
         winutil.open_path(folder)
-        self.overlay.toast("Follow the steps in the page that opened to add PII Guard to your browser.",
+        self.overlay.toast("Follow the steps in the page that opened to add SENSIQ to your browser.",
                            "info", ms=7000)
 
     def _install_ocr_language(self, tag: str) -> None:
@@ -623,10 +631,10 @@ Brave: <code>brave://extensions</code>).</li>
 def main(argv=None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     if "--native-host" in raw or any(a.startswith("chrome-extension://") for a in raw):
-        # started by the browser for the PII Guard extension: relay only, no window, no tray
+        # started by the browser for the SENSIQ extension: relay only, no window, no tray
         from .nativehost import main as host_main
         return host_main()
-    parser = argparse.ArgumentParser(prog="PIIGuard", description="On-device personal data warnings while you type.")
+    parser = argparse.ArgumentParser(prog="SENSIQ", description="On-device personal data warnings while you type.")
     parser.add_argument("--selftest", action="store_true", help="test the detector on sample data and exit")
     parser.add_argument("--no-open", action="store_true", help="with --selftest: don't open the report")
     parser.add_argument("--no-ner", action="store_true", help="patterns only, skip the name model")
@@ -647,17 +655,17 @@ def main(argv=None) -> int:
         return 0 if ok else 1
 
     if not winutil.IS_WIN:
-        print("Live protection needs Windows. On this system you can run: python -m piiguard --selftest")
+        print("Live protection needs Windows. On this system you can run: python -m sensiq --selftest")
         return 2
 
     winutil.set_dpi_awareness()
     if not winutil.acquire_single_instance():
-        winutil.message_box("PII Guard is already running. Look for the shield icon in the system tray.")
+        winutil.message_box("SENSIQ is already running. Look for the shield icon in the system tray.")
         return 0
     try:
         return App(args).run()
     except Exception:
         log.exception("fatal error")
-        winutil.message_box("PII Guard stopped because of an error. Details are in "
-                            f"{data_dir() / 'piiguard.log'}", error=True)
+        winutil.message_box("SENSIQ stopped because of an error. Details are in "
+                            f"{data_dir() / 'sensiq.log'}", error=True)
         return 1

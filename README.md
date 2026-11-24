@@ -1,14 +1,35 @@
-# PII Guard for Windows
+<div align="center">
 
-[![Latest release](https://img.shields.io/github/v/release/umesh-21/PIIGuard?label=download)](https://github.com/umesh-21/PIIGuard/releases/latest)
-[![Build](https://github.com/umesh-21/PIIGuard/actions/workflows/release.yml/badge.svg)](https://github.com/umesh-21/PIIGuard/actions/workflows/release.yml)
+# SENSIQ
 
-**On-device privacy guard for Windows 10/11.** It stops Aadhaar numbers, PAN, phone numbers, names, addresses, ID-card photos and QR codes from leaving your PC by accident, in what you type and in the images, PDFs and documents you upload, paste or drag.
+### Local AI Privacy Intelligence
+
+***Discover before you disclose.***
+
+[![Latest release](https://img.shields.io/github/v/release/umesh-21/SENSIQ?label=download)](https://github.com/umesh-21/SENSIQ/releases/latest)
+[![Build](https://github.com/umesh-21/SENSIQ/actions/workflows/release.yml/badge.svg)](https://github.com/umesh-21/SENSIQ/actions/workflows/release.yml)
+![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
+![Runs offline](https://img.shields.io/badge/AI-on%20your%20PC-0E7C7B)
+
+</div>
+
+## Product capabilities
+
+| | |
+|---|---|
+| ⌨️ **Typing protection** | Warns you the moment you type an Aadhaar, PAN, card, bank or phone number, password, name or address into any app or website, and replaces it in one click. |
+| 🖼️ **Image intelligence** | Reads screenshots and photos, including ID cards and Hindi text, and finds faces, signatures and QR codes, even ones too blurred to scan. |
+| 📄 **Document scanning** | Checks every page of PDFs (scanned ones too), Word, Excel, PowerPoint, ZIP and text files, and shows the exact line each detail was found in. |
+| 🔒 **Safe sharing** | When you upload, paste, drag or attach a file, you pick the details to hide and the safe copy is shared instead. Your original is never changed. |
+
+---
+
+**On-device privacy guard for Windows 10/11** (called *PII Guard* up to version 1.3.0). It stops Aadhaar numbers, PAN, phone numbers, names, addresses, ID-card photos and QR codes from leaving your PC by accident, in what you type and in the images, PDFs and documents you upload, paste or drag.
 
 ## Download and install
 
-1. Go to **[Releases → latest](https://github.com/umesh-21/PIIGuard/releases/latest)** and download `PIIGuard-Setup-x.y.z.exe`. That one file is all you need; it can also be copied to other PCs on a USB stick.
-2. Run it. No administrator rights, Python or internet are needed. It installs for the current user under `%LOCALAPPDATA%\Programs\PII Guard` and adds an uninstaller (Settings → Apps).
+1. Go to **[Releases → latest](https://github.com/umesh-21/SENSIQ/releases/latest)** and download `SENSIQ-Setup-x.y.z.exe`. That one file is all you need; it can also be copied to other PCs on a USB stick.
+2. Run it. No administrator rights, Python or internet are needed. It installs for the current user under `%LOCALAPPDATA%\Programs\SENSIQ` and adds an uninstaller (Settings → Apps).
 3. If Windows shows "Windows protected your PC", click **More info → Run anyway**. The setup file isn't code-signed, but you can compare its SHA-256 with the one on the release page.
 4. A teal shield appears in the system tray. Right-click it for all options.
 5. Optional, to check uploads on websites: tray → **Check uploads in my browser (set up)…** (see [Browser uploads](#browser-uploads-extension)).
@@ -17,18 +38,18 @@ Requirements: Windows 10 or 11, 64-bit.
 
 ## Updates
 
-PII Guard checks this repository's [Releases](https://github.com/umesh-21/PIIGuard/releases) about 90 seconds after it starts and then every 12 hours. When a newer version is published it shows a card with:
+SENSIQ checks this repository's [Releases](https://github.com/umesh-21/SENSIQ/releases) about 90 seconds after it starts and then every 12 hours. When a newer version is published it shows a card with:
 
 - the new version number and download size;
 - **What's new**: that version's notes from [CHANGELOG.md](CHANGELOG.md);
-- **Update now** downloads the setup file, checks it against the SHA-256 published with the release (a mismatching or unverifiable file is never run), installs it over the current version and restarts PII Guard. Your settings are kept;
+- **Update now** downloads the setup file, checks it against the SHA-256 published with the release (a mismatching or unverifiable file is never run), installs it over the current version and restarts SENSIQ. Your settings are kept;
 - **Later** asks again at the next check; **Skip this version** stays quiet until an even newer one; **See on GitHub** opens the release page.
 
 Tray → **Check for updates now** checks at once. Tray → **Check for updates automatically** turns the background check off (`updates.check` in settings).
 
 ## What it does
 
-PII Guard warns you when you type personal data (Aadhaar, PAN, card and bank numbers, phone numbers, emails, UPI IDs, passwords, API keys, names and more) into any app or website. It shows a badge in the corner of the text box, explains what it found and replaces it with a masked version in one click.
+SENSIQ warns you when you type personal data (Aadhaar, PAN, card and bank numbers, phone numbers, emails, UPI IDs, passwords, API keys, names and more) into any app or website. It shows a badge in the corner of the text box, explains what it found and replaces it with a masked version in one click.
 
 It also checks **images, PDFs and documents at the moment you share them**: when you copy an image or screenshot, copy a file, drag a file out of File Explorer, or pick a file in an Open / Upload / Attach dialog. A card lists what it found, with a tick box for each detail. One click makes a safe copy with the ticked details replaced and shares that instead of the original. Originals are never changed.
 
@@ -68,13 +89,13 @@ Names are also found from their labels, in English or Hindi ("Name:", "Father's 
 
 Tray → "Check uploads in my browser (set up)…" opens a short guide: in `chrome://extensions` (or `edge://`, `brave://`), turn on Developer mode, click Load unpacked and choose the `browser_extension` folder in the app's install folder.
 
-With the extension, every file a web page receives is held until PII Guard has checked it: upload buttons, drag and drop (from anywhere, including the downloads list and email attachments), paste, and sites using the newer file picker. Clean files pass straight through. Files with details show the card: **Replace and send** gives the page the safe copy; **Use original** sends the file as it is. With no choice within 5 minutes the file isn't given to the page. If PII Guard isn't running, pages work as normal.
+With the extension, every file a web page receives is held until SENSIQ has checked it: upload buttons, drag and drop (from anywhere, including the downloads list and email attachments), paste, and sites using the newer file picker. Clean files pass straight through. Files with details show the card: **Replace and send** gives the page the safe copy; **Use original** sends the file as it is. With no choice within 5 minutes the file isn't given to the page. If SENSIQ isn't running, pages work as normal.
 
 On Edge profiles signed in to a work or school account, the organisation may block developer-loaded extensions. Use Chrome or a personal Edge profile in that case.
 
 ## Images, PDFs and documents
 
-| You do this | PII Guard checks |
+| You do this | SENSIQ checks |
 |---|---|
 | Copy an image, or take a screenshot with Win+Shift+S | the copied image (OCR) |
 | Copy files in File Explorer (to paste into WhatsApp, Gmail, Teams...) | each copied file |
@@ -99,15 +120,15 @@ Also checked:
 
 Password-protected or damaged files show a warning that they couldn't be checked.
 
-Optional (tray → "Offer a check when I open a file"): when you open a document or picture, PII Guard offers a one-click check.
+Optional (tray → "Offer a check when I open a file"): when you open a document or picture, SENSIQ offers a one-click check.
 
 Limits: up to 500 files per action and 200 MB per file. `file_scan.max_pdf_pages` can cap pages; `0`, the default, means all.
 
-PII Guard never searches or indexes your folders. For a file dialog, it asks the dialog's own file list for the full paths of the selected items: it sends the list's built-in Copy command and reads the paths, then puts your clipboard back exactly as it was. This works in any folder, drive, OneDrive, Home or search view. For drags it asks File Explorer which items are selected, and for copied files the clipboard already holds the paths.
+SENSIQ never searches or indexes your folders. For a file dialog, it asks the dialog's own file list for the full paths of the selected items: it sends the list's built-in Copy command and reads the paths, then puts your clipboard back exactly as it was. This works in any folder, drive, OneDrive, Home or search view. For drags it asks File Explorer which items are selected, and for copied files the clipboard already holds the paths.
 
-If you double-click a file, or press Enter at once, the dialog may close before the card can appear. PII Guard still checks the file. It tells Open from Cancel by watching whether the dialog was closed with Cancel, the window's X, Esc or Alt+F4. For this it hooks only those two keys, and only while a file dialog is open. The card then says the file was already added to the page and offers a safe copy to paste in its place.
+If you double-click a file, or press Enter at once, the dialog may close before the card can appear. SENSIQ still checks the file. It tells Open from Cancel by watching whether the dialog was closed with Cancel, the window's X, Esc or Alt+F4. For this it hooks only those two keys, and only while a file dialog is open. The card then says the file was already added to the page and offers a safe copy to paste in its place.
 
-When you pick a file to upload, attach or send, a small **"PII Guard is checking…"** note appears at once, asking you to wait for the result. It is replaced by the report card, or by **"✓ No personal information found"** for a clean file. (Copying with Ctrl+C stays quiet unless something is found.) Save dialogs are ignored. Drags that start outside File Explorer, for example from a browser's downloads list, aren't seen.
+When you pick a file to upload, attach or send, a small **"SENSIQ is checking…"** note appears at once, asking you to wait for the result. It is replaced by the report card, or by **"✓ No personal information found"** for a clean file. (Copying with Ctrl+C stays quiet unless something is found.) Save dialogs are ignored. Drags that start outside File Explorer, for example from a browser's downloads list, aren't seen.
 
 ### Replacing details before you share
 
@@ -128,15 +149,15 @@ How each type is made safe:
 
 Replacements follow the mask style (tray → "Replace with labels like [Aadhaar]"). "Use original" closes the card and changes nothing.
 
-**Where safe copies are saved.** You choose this on the setup's **Safe copies folder** page, and can change it any time from tray → **Safe copies folder** → Change folder… (or Open, or Use the default folder). The default is `%LOCALAPPDATA%\PIIGuard\Safe copies`, and copies there are deleted after 24 hours. Copies in a folder you choose are kept until you delete them. Each action gets its own dated sub-folder. Updates keep your choice.
+**Where safe copies are saved.** You choose this on the setup's **Safe copies folder** page, and can change it any time from tray → **Safe copies folder** → Change folder… (or Open, or Use the default folder). The default is `%LOCALAPPDATA%\SENSIQ\Safe copies`, and copies there are deleted after 24 hours. Copies in a folder you choose are kept until you delete them. Each action gets its own dated sub-folder. Updates keep your choice.
 
 ## Build it yourself
 
-Most people should use the setup file from [Releases](https://github.com/umesh-21/PIIGuard/releases). To build from source you need Windows 10 or 11 (64-bit), [Python 3.11 64-bit](https://www.python.org/downloads/windows/) with "Add to PATH" ticked, and [Inno Setup 6](https://jrsoftware.org/isdl.php) for the setup file (`winget install JRSoftware.InnoSetup --scope user`).
+Most people should use the setup file from [Releases](https://github.com/umesh-21/SENSIQ/releases). To build from source you need Windows 10 or 11 (64-bit), [Python 3.11 64-bit](https://www.python.org/downloads/windows/) with "Add to PATH" ticked, and [Inno Setup 6](https://jrsoftware.org/isdl.php) for the setup file (`winget install JRSoftware.InnoSetup --scope user`).
 
 ```
-git clone https://github.com/umesh-21/PIIGuard.git
-cd PIIGuard
+git clone https://github.com/umesh-21/SENSIQ.git
+cd SENSIQ
 build.bat
 ```
 
@@ -145,8 +166,8 @@ The script:
 1. creates `.venv` and installs the packages in `requirements.txt`
 2. downloads the name model (`Xenova/bert-base-NER`, quantized ONNX), the face detector and spaCy's small English model into `models\` (they aren't stored in git: the name model is over GitHub's 100 MB file limit)
 3. runs the unit tests and an end-to-end self-test with the real model
-4. packages everything with PyInstaller into `dist\PIIGuard\`
-5. builds `dist\installer\PIIGuard-Setup-<version>.exe` (or `dist\PIIGuard-portable.zip` if Inno Setup isn't installed)
+4. packages everything with PyInstaller into `dist\SENSIQ\`
+5. builds `dist\installer\SENSIQ-Setup-<version>.exe` (or `dist\SENSIQ-portable.zip` if Inno Setup isn't installed)
 
 The build is the only step that needs the internet. For a quick run from source after the first build: `run_dev.bat`.
 
@@ -164,7 +185,7 @@ Pushing commits without a new tag doesn't release anything. Users only get versi
 
 ## Demo walkthrough
 
-1. Open the demo page (Start menu → PII Guard demo page). It runs from disk, no internet.
+1. Open the demo page (Start menu → SENSIQ demo page). It runs from disk, no internet.
 2. Click "Put in message box" next to "Government IDs". About half a second later a red badge with a number appears in the bottom-right corner of the message box, and a short alert names the most serious item.
 3. Click the badge. The panel lists each finding: the original value struck through in red, and the safe replacement in teal.
 4. Click Replace on the Aadhaar row. The number in the text box changes to `XXXX XXXX 7615` and the count drops.
@@ -184,24 +205,24 @@ Pushing commits without a new tag doesn't release anything. Users only get versi
         └──── select value + paste ◀── Replace click ◀── Overlay (Tk) ◀── findings
 ```
 
-- **Reading text.** Windows UI Automation is the accessibility API used by screen readers. It exposes the focused text box of almost every app, including browsers, Office and Electron apps. PII Guard reads only editable fields. It skips password boxes, its own windows, and apps in `deny_processes`.
+- **Reading text.** Windows UI Automation is the accessibility API used by screen readers. It exposes the focused text box of almost every app, including browsers, Office and Electron apps. SENSIQ reads only editable fields. It skips password boxes, its own windows, and apps in `deny_processes`.
 - **Detecting.** Detection waits until you pause typing (500 ms). Rules run on the whole text in under a millisecond. The name model runs paragraph by paragraph and caches results, so only the paragraph you edit is re-checked.
 - **Showing.** The badge and panel are topmost, non-activating windows. Clicking them never moves your cursor out of the app you're typing in.
-- **Replacing.** PII Guard selects exactly the detected value in the target field (UI Automation `FindText` + `Select`) and pastes the replacement. A paste triggers the same events as a user paste, so web apps notice the change. It restores your clipboard afterwards. For simple fields it falls back to setting the value directly. If a field can't be edited from outside, the safe text is copied to your clipboard and you're told to paste it.
+- **Replacing.** SENSIQ selects exactly the detected value in the target field (UI Automation `FindText` + `Select`) and pastes the replacement. A paste triggers the same events as a user paste, so web apps notice the change. It restores your clipboard afterwards. For simple fields it falls back to setting the value directly. If a field can't be edited from outside, the safe text is copied to your clipboard and you're told to paste it.
 
 ## Privacy and offline operation
 
 - Detection is fully offline. The model, tokenizer and rules ship inside the installer, and ONNX Runtime runs on the CPU.
 - The only network request is the update check: an anonymous HTTPS GET to `api.github.com` for this repository's latest release (and the download if you click Update now). No text, file, name or machine detail is sent. Turn it off with tray → "Check for updates automatically".
-- Typed text and text read from images and files live only in memory. They are never written to the log. The only files PII Guard writes are the safe copies you ask for, which are deleted after 24 hours.
+- Typed text and text read from images and files live only in memory. They are never written to the log. The only files SENSIQ writes are the safe copies you ask for, which are deleted after 24 hours.
 - "Always ignore" stores a SHA-256 fingerprint of the value, never the value itself.
-- Uninstalling removes the app and `%APPDATA%\PIIGuard` (settings, ignore list, log).
+- Uninstalling removes the app and `%APPDATA%\SENSIQ` (settings, ignore list, log).
 
-To check this yourself, block `PIIGuard.exe` in Windows Firewall or disconnect from the network. Everything except the update check keeps working.
+To check this yourself, block `SENSIQ.exe` in Windows Firewall or disconnect from the network. Everything except the update check keeps working.
 
 ## Settings
 
-Tray menu → Open settings file (`%APPDATA%\PIIGuard\settings.json`), then Reload settings.
+Tray menu → Open settings file (`%APPDATA%\SENSIQ\settings.json`), then Reload settings.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -221,7 +242,7 @@ Tray menu → Open settings file (`%APPDATA%\PIIGuard\settings.json`), then Relo
 | `updates.check` | `true` | Check GitHub for new versions twice a day |
 | `updates.skip_version` | `""` | Version you chose to skip ("Skip this version") |
 | `detectors.<KIND>` | on (IP off) | Turn individual detectors on or off |
-| `deny_processes` | password managers, RDP | Apps PII Guard never reads |
+| `deny_processes` | password managers, RDP | Apps SENSIQ never reads |
 | `document_editor_processes` | Word, Outlook, OneNote, Notepad… | Apps whose document area counts as editable |
 | `show_alert_for_high_risk` | `true` | Short alert when an ID, card, password or key appears |
 
@@ -232,10 +253,10 @@ Tray menu → Open settings file (`%APPDATA%\PIIGuard\settings.json`), then Relo
 | No badge in Chrome or Edge | Open `chrome://accessibility` (or `edge://accessibility`) and tick "Native accessibility API support". Most systems don't need this. |
 | No badge in an Electron app (VS Code, Discord…) | Start the app with `--force-renderer-accessibility`. In VS Code you can instead set `"editor.accessibilitySupport": "on"`. |
 | No badge in Google Docs | Docs draws text on a canvas. Turn on Tools → Accessibility → Screen reader support. |
-| Nothing in an app running as administrator | Windows blocks normal apps from reading elevated windows. Run PII Guard as administrator too, or leave that app out. |
+| Nothing in an app running as administrator | Windows blocks normal apps from reading elevated windows. Run SENSIQ as administrator too, or leave that app out. |
 | "Name detection is off" | The model files are missing. Run the self-test from the tray to see why, and rebuild if needed. |
 | Replace didn't change the text | Some apps refuse outside edits. The safe text is already on your clipboard: select the value and press Ctrl+V. |
-| Something else | Tray → Open log folder → `piiguard.log`. Run `run_dev.bat` from the source folder for a live debug log. |
+| Something else | Tray → Open log folder → `sensiq.log`. Run `run_dev.bat` from the source folder for a live debug log. |
 
 ## Known limits
 
@@ -244,13 +265,13 @@ Tray menu → Open settings file (`%APPDATA%\PIIGuard\settings.json`), then Relo
 - Images already open in a viewer, or PDFs you only look at, aren't scanned. Checks run when you copy, drag or upload them.
 - Handwriting and very blurry photos may not be read.
 - The bundled model is trained on English news text, so it finds English and most Indian names written in Latin script. It doesn't find names written in Devanagari or other scripts. A multilingual NER model can be swapped in with `build.ps1 -Model`.
-- Pattern rules focus on Indian and common international formats. Add more in `piiguard/detector/rules.py`.
+- Pattern rules focus on Indian and common international formats. Add more in `sensiq/detector/rules.py`.
 - "Replace all" in rich editors replaces items one at a time from the end of the text, which takes about a second.
 
 ## Project layout
 
 ```
-piiguard/
+sensiq/
   app.py           main program, event loop, tray actions, CLI
   capture.py       UI Automation: read focused field, write replacements
   overlay.py       badge, panel and alerts (Tk)
@@ -281,7 +302,7 @@ tests/             unit tests (pytest)
 build.ps1 / build.bat / installer.iss
 ```
 
-Command-line options: `PIIGuard.exe --selftest`, `--no-ner` (patterns only), `--no-tray`, `--debug`.
+Command-line options: `SENSIQ.exe --selftest`, `--no-ner` (patterns only), `--no-tray`, `--debug`.
 
 ## Licences
 

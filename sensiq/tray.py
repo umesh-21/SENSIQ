@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 class Tray:
     def __init__(self, app):
         self.app = app
-        self.icon = pystray.Icon("PIIGuard", make_icon_image(64, active=self._enabled()),
+        self.icon = pystray.Icon("SENSIQ", make_icon_image(64, active=self._enabled()),
                                  self._title(), menu=self._menu())
 
     def _enabled(self) -> bool:
@@ -66,7 +66,7 @@ class Tray:
             Item("Forget ignored items", self._post("clear_ignore")),
             Item("Open log folder", self._post("logs")),
             Menu.SEPARATOR,
-            Item("Quit PII Guard", self._post("quit")),
+            Item("Quit SENSIQ", self._post("quit")),
         )
 
     def start(self) -> None:

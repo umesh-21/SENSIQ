@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from piiguard import filescan, redact
-from piiguard.detector.engine import resolve_overlaps
-from piiguard.detector.rules import RuleDetector
+from sensiq import filescan, redact
+from sensiq.detector.engine import resolve_overlaps
+from sensiq.detector.rules import RuleDetector
 
 
 def detect(text):
@@ -20,7 +20,7 @@ def kinds(text):
 
 def _ocr_ok():
     try:
-        from piiguard import ocr
+        from sensiq import ocr
         return ocr.status()["ocr_loaded"]
     except Exception:
         return False
@@ -129,7 +129,7 @@ def test_every_page_of_a_tiff_scan(tmp_path):
 @needs_ocr
 def test_very_tall_image_read_to_the_end(tmp_path):
     from PIL import Image, ImageDraw, ImageFont
-    from piiguard import ocr
+    from sensiq import ocr
     img = Image.new("RGB", (1080, 16000), "white")
     d = ImageDraw.Draw(img)
     font = ImageFont.truetype("arial.ttf", 26)
@@ -144,9 +144,9 @@ def test_whole_document_checked_not_just_the_start():
     """Live typing is capped at max_chars, but documents must be checked to the last character."""
     import queue
     import threading
-    from piiguard.config import Config, IgnoreList
-    from piiguard.detector.engine import DetectionEngine
-    from piiguard.worker import DetectorWorker
+    from sensiq.config import Config, IgnoreList
+    from sensiq.detector.engine import DetectionEngine
+    from sensiq.worker import DetectorWorker
     cfg = Config.defaults()
     cfg.data["ner"]["enabled"] = False
     cfg.data["presidio"]["enabled"] = False
@@ -167,7 +167,7 @@ def test_whole_document_checked_not_just_the_start():
 
 
 def test_old_settings_upgraded(tmp_path):
-    from piiguard.config import Config
+    from sensiq.config import Config
     p = tmp_path / "settings.json"
     p.write_text(json.dumps({"file_scan": {"max_pdf_pages": 30, "max_file_mb": 50}}), encoding="utf-8")
     cfg = Config(path=p)

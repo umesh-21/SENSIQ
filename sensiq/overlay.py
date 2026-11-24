@@ -727,7 +727,7 @@ class Overlay:
         w = self._new_window(ACTION)
         inner = tk.Frame(w, bg=SURFACE, padx=px(12), pady=px(10))
         inner.pack(padx=(px(4), 1), pady=1)
-        head = tk.Label(inner, text="PII Guard is checking", font=self.f_label, fg=ACTION, bg=SURFACE, anchor="w")
+        head = tk.Label(inner, text="SENSIQ is checking", font=self.f_label, fg=ACTION, bg=SURFACE, anchor="w")
         head.pack(fill="x")
         tk.Label(inner, text=message, font=self.f_body, fg=INK, bg=SURFACE, wraplength=px(300),
                  justify="left").pack(anchor="w", pady=(px(2), 0))
@@ -744,7 +744,7 @@ class Overlay:
                 return
             state["n"] = (state["n"] + 1) % 4
             try:
-                head.configure(text="PII Guard is checking" + "." * state["n"])
+                head.configure(text="SENSIQ is checking" + "." * state["n"])
             except tk.TclError:
                 return
             self._checking_tick = self.root.after(400, tick)
@@ -808,7 +808,7 @@ class Overlay:
         w = self._new_window(ACTION)
         body = tk.Frame(w, bg=SURFACE, padx=px(16), pady=px(14))
         body.pack(padx=(px(4), 1), pady=1, fill="both")
-        tk.Label(body, text=f"PII Guard {info.version} is available", font=self.f_title, fg=INK, bg=SURFACE,
+        tk.Label(body, text=f"SENSIQ {info.version} is available", font=self.f_title, fg=INK, bg=SURFACE,
                  anchor="w").pack(fill="x")
         size = f" · {info.setup_size / 1e6:.0f} MB download" if info.setup_size else ""
         tk.Label(body, text=f"You have version {current}{size}", font=self.f_small, fg=MUTED, bg=SURFACE,

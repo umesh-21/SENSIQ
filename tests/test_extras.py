@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from piiguard import filescan, redact
-from piiguard.config import Config, IgnoreList
-from piiguard.detector.engine import DetectionEngine
+from sensiq import filescan, redact
+from sensiq.config import Config, IgnoreList
+from sensiq.detector.engine import DetectionEngine
 
 
 def _ocr_ok():
     try:
-        from piiguard import ocr
+        from sensiq import ocr
         return ocr.status()["ocr_loaded"]
     except Exception:
         return False
@@ -32,7 +32,7 @@ def engine():
 
 
 def scanner(engine):
-    from piiguard.sharewatch import FileScanWorker
+    from sensiq.sharewatch import FileScanWorker
     return FileScanWorker(engine.detect_all, engine.config, queue.Queue(), threading.Event())
 
 
@@ -70,7 +70,7 @@ def test_qr_with_private_details_is_found_and_covered(tmp_path, engine):
     assert "PHONE" in [f.kind for f in res.findings]
     out = tmp_path / "safe.png"
     redact.redact_file(src, res.extracted, res.findings, out)
-    from piiguard import visual
+    from sensiq import visual
     from PIL import Image
     assert visual.find_codes(Image.open(out)) == []       # the code is covered, no longer readable
 
@@ -148,7 +148,7 @@ def test_heic_photo(tmp_path, engine):
 
 
 def test_zip_checked_and_rebuilt(tmp_path, engine):
-    from piiguard.sharewatch import ShareContext
+    from sensiq.sharewatch import ShareContext
     src = tmp_path / "docs.zip"
     with zipfile.ZipFile(src, "w") as z:
         z.writestr("notes/a.txt", "Aadhaar 4918 3205 7615")
@@ -238,7 +238,7 @@ def test_never_flag_words():
 
 
 def test_no_ten_file_cap(tmp_path, engine):
-    from piiguard.sharewatch import ShareContext
+    from sensiq.sharewatch import ShareContext
     paths = []
     for i in range(25):
         p = tmp_path / f"f{i}.txt"
@@ -257,7 +257,7 @@ def test_no_ten_file_cap(tmp_path, engine):
 def test_opened_file_offer(tmp_path, engine, monkeypatch):
     """Opening a document (it appears in Recent items) leads to a 'Check it' offer, only when switched on."""
     import time as _t
-    from piiguard.sharewatch import OpenedFileWatcher
+    from sensiq.sharewatch import OpenedFileWatcher
     recent = tmp_path / "Microsoft" / "Windows" / "Recent"
     recent.mkdir(parents=True)
     monkeypatch.setenv("APPDATA", str(tmp_path))

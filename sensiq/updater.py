@@ -1,10 +1,10 @@
 """Updates from GitHub Releases.
 
 The only network use of the installed app. It asks GitHub's public API for the latest
-release of the PII Guard repository (a plain GET; nothing about you or your files is
+release of the SENSIQ repository (a plain GET; nothing about you or your files is
 sent) and, if it is newer, offers it with its release notes. On "Update now" the setup
 file is downloaded, checked against the SHA-256 published with the release, and run
-silently; it closes PII Guard, installs over it and starts the new version.
+silently; it closes SENSIQ, installs over it and starts the new version.
 
 Turn it off in the tray ("Check for updates automatically") or in settings
 (updates.check = false).
@@ -30,8 +30,9 @@ from .paths import data_dir
 log = logging.getLogger(__name__)
 
 API = "https://api.github.com/repos/{repo}/releases/latest"
-USER_AGENT = "PIIGuard-updater"  # generic: no user or machine details
-SETUP_NAME = re.compile(r"^PIIGuard-Setup-.*\.exe$", re.I)
+USER_AGENT = "SENSIQ-updater"  # generic: no user or machine details
+SETUP_NAME = re.compile(r"^SENSIQ-Setup-.*\.exe$", re.I)
+OLD_SETUP_NAME = re.compile(r"^PIIGuard-Setup-.*\.exe$", re.I)  # releases from before the rename
 FIRST_CHECK_S = 90            # after start-up
 EVERY_S = 12 * 3600           # then twice a day
 
@@ -70,7 +71,8 @@ def latest(repo: str = UPDATE_REPO) -> Optional[UpdateInfo]:
     with _get(API.format(repo=repo)) as r:
         data = json.loads(r.read().decode("utf-8"))
     assets = data.get("assets") or []
-    setup = next((a for a in assets if SETUP_NAME.match(a.get("name", ""))), None)
+    setup = (next((a for a in assets if SETUP_NAME.match(a.get("name", ""))), None)
+             or next((a for a in assets if OLD_SETUP_NAME.match(a.get("name", ""))), None))
     if setup is None:
         return None
     sha = None
@@ -99,7 +101,7 @@ def check(repo: str = UPDATE_REPO, skip_version: str = "") -> Optional[UpdateInf
 
 
 def updates_dir() -> Path:
-    d = Path(os.environ.get("LOCALAPPDATA") or data_dir()) / "PIIGuard" / "updates"
+    d = Path(os.environ.get("LOCALAPPDATA") or data_dir()) / "SENSIQ" / "updates"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -133,7 +135,7 @@ def download(info: UpdateInfo, progress: Optional[Callable[[float], None]] = Non
 
 
 def install(setup: Path) -> None:
-    """Run the setup silently; it closes PII Guard, installs over it and starts it again."""
+    """Run the setup silently; it closes SENSIQ, installs over it and starts it again."""
     log_path = updates_dir() / "setup.log"
     flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     subprocess.Popen([str(setup), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LOG={log_path}"],
@@ -143,7 +145,7 @@ def install(setup: Path) -> None:
 def cleanup() -> None:
     """Remove setup files of earlier updates."""
     try:
-        for p in updates_dir().glob("PIIGuard-Setup-*"):
+        for p in updates_dir().glob("SENSIQ-Setup-*"):
             if time.time() - p.stat().st_mtime > 3600:
                 p.unlink(missing_ok=True)
     except Exception:

@@ -1,9 +1,9 @@
-// PII Guard - relays files between web pages and the PII Guard app on this computer.
+// SENSIQ - relays files between web pages and the SENSIQ app on this computer.
 // Pages talk to this worker through a port; this worker talks to the app through the
-// browser's native-messaging channel (host "com.piiguard.host"). Nothing goes online.
+// browser's native-messaging channel (host "com.sensiq.host"). Nothing goes online.
 
-const HOST = "com.piiguard.host";
-let native = null;            // native-messaging port to the PII Guard app
+const HOST = "com.sensiq.host";
+let native = null;            // native-messaging port to the SENSIQ app
 const routes = new Map();     // request id -> { port, local id }
 
 function release(id, reason) {
@@ -38,7 +38,7 @@ function nativePort() {
 }
 
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== "piiguard") return;
+  if (port.name !== "sensiq") return;
   const tag = `${port.sender?.tab?.id ?? "x"}:${port.sender?.frameId ?? 0}:`;
   port.onMessage.addListener((msg) => {
     const id = tag + msg.id;

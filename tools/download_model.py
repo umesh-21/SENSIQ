@@ -24,7 +24,7 @@ FILES = [
 
 
 def fetch(url: str, dest: Path) -> None:
-    headers = {"User-Agent": "piiguard-build/1.0"}
+    headers = {"User-Agent": "sensiq-build/1.0"}
     token = os.environ.get("HF_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"

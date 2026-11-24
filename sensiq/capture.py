@@ -68,7 +68,7 @@ class FocusWatcher(threading.Thread):
             import uiautomation as auto
         except Exception:
             log.exception("uiautomation import failed")
-            self.events.put(("fatal", "Windows UI Automation is not available, so PII Guard can't read text fields."))
+            self.events.put(("fatal", "Windows UI Automation is not available, so SENSIQ can't read text fields."))
             return
         self.auto = auto
         try:

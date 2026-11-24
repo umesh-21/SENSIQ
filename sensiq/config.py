@@ -1,4 +1,4 @@
-"""User settings and the ignore list, stored in %APPDATA%\\PIIGuard."""
+"""User settings and the ignore list, stored in %APPDATA%\\SENSIQ."""
 from __future__ import annotations
 
 import copy
@@ -44,7 +44,7 @@ DEFAULTS = {
         "clipboard": True,        # copied images/screenshots and copied files
         "drag_drop": True,        # files dragged out of File Explorer or the desktop
         "file_dialogs": True,     # files picked in an Open / Upload / Attach dialog
-        "browser_extension": True,  # files web pages receive, via the PII Guard browser extension
+        "browser_extension": True,  # files web pages receive, via the SENSIQ browser extension
         "opened_files": False,    # offer a check when you open a document/picture (off by default)
         "max_file_mb": 200,
         "max_pdf_pages": 0,       # 0 = every page of a PDF / multi-page image
@@ -54,10 +54,10 @@ DEFAULTS = {
     "updates": {"check": True, "repo": "", "skip_version": ""},
     "settings_version": 2,
     "detectors": {k: (k != "IP_ADDRESS") for k in DETECTOR_KINDS},
-    # Apps where PII Guard never reads text.
+    # Apps where SENSIQ never reads text.
     "deny_processes": [
         "keepass.exe", "keepassxc.exe", "1password.exe", "bitwarden.exe",
-        "mstsc.exe", "vmconnect.exe", "piiguard.exe",
+        "mstsc.exe", "vmconnect.exe", "sensiq.exe",
     ],
     # Apps whose main document area is editable even without a writable ValuePattern.
     "document_editor_processes": [

@@ -1,6 +1,6 @@
 """Extra detectors from Presidio (https://github.com/data-privacy-stack/presidio, MIT).
 
-Presidio adds checksum- and context-aware recognizers on top of PII Guard's own rules:
+Presidio adds checksum- and context-aware recognizers on top of SENSIQ's own rules:
 international phone numbers (Google libphonenumber), Indian IDs (Aadhaar, PAN, passport,
 voter ID, vehicle registration, GSTIN), cards, IBAN, crypto wallets and US SSN.
 
@@ -8,7 +8,7 @@ Offline by design:
   * the spaCy model (en_core_web_sm) ships with the app and is only used for
     tokens and lemmas that Presidio's context scoring needs;
   * Presidio's EmailRecognizer is not loaded because its tldextract dependency can
-    download the public-suffix list (PII Guard has its own email rule);
+    download the public-suffix list (SENSIQ has its own email rule);
   * names and places stay with the local BERT model, which is more accurate than
     the small spaCy model, so spaCy's own entities are not requested.
 """
@@ -21,7 +21,7 @@ from .types import Finding
 
 log = logging.getLogger(__name__)
 
-# Presidio entity -> PII Guard kind
+# Presidio entity -> SENSIQ kind
 ENTITY_TO_KIND = {
     "IN_AADHAAR": "AADHAAR",
     "IN_PAN": "PAN",

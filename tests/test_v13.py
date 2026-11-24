@@ -8,10 +8,10 @@ import types
 
 import pytest
 
-from piiguard import paths
-from piiguard.config import Config, IgnoreList
-from piiguard.detector.engine import DetectionEngine
-from piiguard.sharewatch import FileScanWorker, ShareContext
+from sensiq import paths
+from sensiq.config import Config, IgnoreList
+from sensiq.detector.engine import DetectionEngine
+from sensiq.sharewatch import FileScanWorker, ShareContext
 
 
 @pytest.fixture(scope="module")
@@ -96,7 +96,7 @@ def test_safe_copies_are_written_to_chosen_folder(tmp_path, engine):
 
 
 def test_installer_choice_wins_at_startup(tmp_path, monkeypatch):
-    from piiguard.app import App
+    from sensiq.app import App
     cfg = Config.defaults()
     cfg.save = lambda: None
     chosen = str(tmp_path / "from installer")
@@ -110,7 +110,7 @@ def test_installer_choice_wins_at_startup(tmp_path, monkeypatch):
 
 # ---- closing a report ------------------------------------------------------------------------------
 def test_reports_from_same_dialog_replace_each_other():
-    from piiguard.app import App
+    from sensiq.app import App
     a = ShareContext("dialog", "x", dialog_hwnd=101)
     assert App._same_dialog(a, ShareContext("dialog", "y", dialog_hwnd=101))
     assert not App._same_dialog(a, ShareContext("dialog", "y", dialog_hwnd=202))
@@ -119,7 +119,7 @@ def test_reports_from_same_dialog_replace_each_other():
 
 def test_close_button_dismisses_card(tmp_path, engine):
     tk = pytest.importorskip("tkinter")
-    from piiguard.overlay import Overlay
+    from sensiq.overlay import Overlay
     f = tmp_path / "id.txt"
     f.write_text("Aadhaar 4918 3205 7615", encoding="utf-8")
     w = FileScanWorker(engine.detect_all, engine.config, queue.Queue(), threading.Event())

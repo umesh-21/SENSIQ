@@ -11,10 +11,10 @@ def set_version(v: str) -> None:
         raise SystemExit(f"version must look like 1.2.0, got {v!r}")
     a, b, c = v.split(".")
     edits = {
-        "piiguard/__init__.py": [(r'__version__ = "[^"]+"', f'__version__ = "{v}"')],
+        "sensiq/__init__.py": [(r'__version__ = "[^"]+"', f'__version__ = "{v}"')],
         "installer.iss": [(r'#define AppVersion "[^"]+"', f'#define AppVersion "{v}"')],
         "browser_extension/manifest.json": [(r'"version": "[^"]+"', f'"version": "{v}"')],
-        "build.ps1": [(r"PIIGuard-Setup-\d+\.\d+\.\d+\.exe", f"PIIGuard-Setup-{v}.exe")],
+        "build.ps1": [(r"SENSIQ-Setup-\d+\.\d+\.\d+\.exe", f"SENSIQ-Setup-{v}.exe")],
         "version_info.txt": [(r"filevers=\(\d+, \d+, \d+, 0\)", f"filevers=({a}, {b}, {c}, 0)"),
                              (r"prodvers=\(\d+, \d+, \d+, 0\)", f"prodvers=({a}, {b}, {c}, 0)"),
                              (r"'FileVersion', '[^']+'", f"'FileVersion', '{v}'"),

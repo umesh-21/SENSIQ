@@ -4,9 +4,9 @@ import zipfile
 
 import pytest
 
-from piiguard import filescan, redact
-from piiguard.detector.engine import resolve_overlaps
-from piiguard.detector.rules import RuleDetector
+from sensiq import filescan, redact
+from sensiq.detector.engine import resolve_overlaps
+from sensiq.detector.rules import RuleDetector
 
 
 def detect(text):
@@ -57,7 +57,7 @@ def test_no_findings_copies_unchanged(tmp_path):
 
 def _ocr_ok():
     try:
-        from piiguard import ocr
+        from sensiq import ocr
         return ocr.status()["ocr_loaded"]
     except Exception:
         return False
@@ -116,7 +116,7 @@ def test_text_layer_pdf(tmp_path):
 
 
 def test_clipboard_save_restore():
-    from piiguard import winutil
+    from sensiq import winutil
     if not winutil.IS_WIN:
         pytest.skip("Windows only")
     import uiautomation as auto
@@ -134,14 +134,14 @@ def test_clipboard_save_restore():
 
 
 def test_copy_selection_without_dialog_is_harmless():
-    from piiguard import winutil
+    from sensiq import winutil
     if not winutil.IS_WIN:
         pytest.skip("Windows only")
     assert winutil.copy_selection_paths(0) == []
 
 
 def test_clipboard_formats():
-    from piiguard import winutil
+    from sensiq import winutil
     if not winutil.IS_WIN:
         pytest.skip("Windows only")
     import struct

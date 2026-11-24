@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Builds PII Guard into dist\PIIGuard\PIIGuard.exe and an installer
-  (dist\installer\PIIGuard-Setup-1.3.0.exe).
+  Builds SENSIQ into dist\SENSIQ\SENSIQ.exe and an installer
+  (dist\installer\SENSIQ-Setup-1.4.0.exe).
 
 .DESCRIPTION
   Run once on a Windows 10/11 x64 machine that has internet access.
@@ -67,7 +67,7 @@ Step "Installing the small spaCy model used by Presidio (en_core_web_sm)"
 if ($LASTEXITCODE -ne 0) { & $py -m spacy download en_core_web_sm; Check "spaCy model download" }
 
 Step "Checking Windows OCR (used for images and scanned PDFs)"
-& $py -c "from piiguard import ocr; s = ocr.status(); print(s); import sys; sys.exit(0 if s['ocr_loaded'] else 1)"
+& $py -c "from sensiq import ocr; s = ocr.status(); print(s); import sys; sys.exit(0 if s['ocr_loaded'] else 1)"
 if ($LASTEXITCODE -ne 0) { Write-Warning "Windows OCR isn't available on this build PC. Images will be skipped where OCR is missing." }
 
 # 4. Icon and COM wrappers ----------------------------------------------------------------
@@ -82,12 +82,12 @@ if (-not $SkipTests) {
     Step "Running unit tests"
     & $py -m pytest -q tests; Check "unit tests"
     Step "Running end-to-end detector self-test (with the real model)"
-    & $py -m piiguard --selftest --no-open; Check "self-test"
+    & $py -m sensiq --selftest --no-open; Check "self-test"
 }
 
 # 6. Package ------------------------------------------------------------------------------
 Step "Packaging with PyInstaller"
-& $py -m PyInstaller --noconfirm --clean --windowed --name PIIGuard `
+& $py -m PyInstaller --noconfirm --clean --windowed --name SENSIQ `
     --icon assets\icon.ico `
     --add-data "models;models" `
     --add-data "assets;assets" `
@@ -110,24 +110,24 @@ Step "Packaging with PyInstaller"
     --add-data "browser_extension;browser_extension" `
     --exclude-module torch --exclude-module transformers --exclude-module stanza `
     --version-file version_info.txt `
-    run_piiguard.py
+    run_sensiq.py
 Check "PyInstaller"
 
 # Make sure the Visual C++ runtime that ONNX Runtime needs travels with the app,
 # so it starts on PCs that never installed the VC++ redistributable.
-$internal = "dist\PIIGuard\_internal"
+$internal = "dist\SENSIQ\_internal"
 foreach ($dll in @("msvcp140.dll", "msvcp140_1.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
     $src = Join-Path $env:WINDIR "System32\$dll"
     if ((Test-Path $src) -and -not (Test-Path (Join-Path $internal $dll))) { Copy-Item $src $internal }
 }
 
 Step "Checking the packaged app"
-Start-Process -FilePath "dist\PIIGuard\PIIGuard.exe" -ArgumentList "--selftest", "--no-open" -Wait
-$report = Join-Path $env:APPDATA "PIIGuard\selftest.txt"
+Start-Process -FilePath "dist\SENSIQ\SENSIQ.exe" -ArgumentList "--selftest", "--no-open" -Wait
+$report = Join-Path $env:APPDATA "SENSIQ\selftest.txt"
 if (Test-Path $report) { Get-Content $report | Select-Object -Last 4 }
 
 # 7. Installer -----------------------------------------------------------------------------
-if ($SkipInstaller) { Write-Host "`nDone. Portable app: dist\PIIGuard\PIIGuard.exe" -ForegroundColor Green; exit 0 }
+if ($SkipInstaller) { Write-Host "`nDone. Portable app: dist\SENSIQ\SENSIQ.exe" -ForegroundColor Green; exit 0 }
 
 Step "Building installer"
 $iscc = @(
@@ -138,10 +138,10 @@ $iscc = @(
 
 if ($iscc) {
     & $iscc installer.iss; Check "Inno Setup"
-    Write-Host "`nDone. Installer: dist\installer\PIIGuard-Setup-1.3.0.exe" -ForegroundColor Green
+    Write-Host "`nDone. Installer: dist\installer\SENSIQ-Setup-1.4.0.exe" -ForegroundColor Green
 } else {
     Write-Warning "Inno Setup 6 not found (free from jrsoftware.org). Making a portable zip instead."
-    Copy-Item demo "dist\PIIGuard\demo" -Recurse -Force
-    Compress-Archive -Path "dist\PIIGuard\*" -DestinationPath "dist\PIIGuard-portable.zip" -Force
-    Write-Host "`nDone. Portable zip: dist\PIIGuard-portable.zip" -ForegroundColor Green
+    Copy-Item demo "dist\SENSIQ\demo" -Recurse -Force
+    Compress-Archive -Path "dist\SENSIQ\*" -DestinationPath "dist\SENSIQ-portable.zip" -Force
+    Write-Host "`nDone. Portable zip: dist\SENSIQ-portable.zip" -ForegroundColor Green
 }

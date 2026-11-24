@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from piiguard import updater
-from piiguard.overlay import Overlay
+from sensiq import updater
+from sensiq.overlay import Overlay
 
 
 @pytest.mark.parametrize("remote, local, newer", [
@@ -32,20 +32,20 @@ class _Resp(io.BytesIO):
 def _fake_github(monkeypatch, setup_bytes: bytes, sha: str, version="v9.0.0", with_sha=True):
     release = {
         "tag_name": version, "body": "## New\n- **Faster** scans\n- Fixed [a bug](https://x)",
-        "html_url": "https://github.com/o/PIIGuard/releases/tag/" + version,
-        "assets": [{"name": f"PIIGuard-Setup-{version[1:]}.exe", "size": len(setup_bytes),
+        "html_url": "https://github.com/o/SENSIQ/releases/tag/" + version,
+        "assets": [{"name": f"SENSIQ-Setup-{version[1:]}.exe", "size": len(setup_bytes),
                     "browser_download_url": "https://dl/setup.exe"}],
     }
     if with_sha:
-        release["assets"].append({"name": f"PIIGuard-Setup-{version[1:]}.exe.sha256", "size": 80,
+        release["assets"].append({"name": f"SENSIQ-Setup-{version[1:]}.exe.sha256", "size": 80,
                                   "browser_download_url": "https://dl/setup.sha256"})
 
     def fake_get(url, timeout=15):
         if url.startswith("https://api.github.com/"):
-            assert url == "https://api.github.com/repos/o/PIIGuard/releases/latest"
+            assert url == "https://api.github.com/repos/o/SENSIQ/releases/latest"
             return _Resp(json.dumps(release).encode())
         if url.endswith(".sha256"):
-            return _Resp(f"{sha}  PIIGuard-Setup.exe".encode())
+            return _Resp(f"{sha}  SENSIQ-Setup.exe".encode())
         return _Resp(setup_bytes)
     monkeypatch.setattr(updater, "_get", fake_get)
 
@@ -54,7 +54,7 @@ def test_check_finds_newer_release_and_download_is_verified(monkeypatch, tmp_pat
     data = b"MZ fake setup" * 1000
     _fake_github(monkeypatch, data, hashlib.sha256(data).hexdigest())
     monkeypatch.setattr(updater, "updates_dir", lambda: tmp_path)
-    info = updater.check("o/PIIGuard")
+    info = updater.check("o/SENSIQ")
     assert info.version == "9.0.0" and "Faster" in info.notes
     seen = []
     path = updater.download(info, seen.append)
@@ -63,28 +63,28 @@ def test_check_finds_newer_release_and_download_is_verified(monkeypatch, tmp_pat
 
 def test_skipped_version_is_not_offered_again(monkeypatch):
     _fake_github(monkeypatch, b"x", hashlib.sha256(b"x").hexdigest())
-    assert updater.check("o/PIIGuard", skip_version="9.0.0") is None
-    assert updater.check("o/PIIGuard", skip_version="8.0.0") is not None
+    assert updater.check("o/SENSIQ", skip_version="9.0.0") is None
+    assert updater.check("o/SENSIQ", skip_version="8.0.0") is not None
 
 
 def test_same_or_older_release_is_not_offered(monkeypatch):
     _fake_github(monkeypatch, b"x", hashlib.sha256(b"x").hexdigest(), version="v0.0.1")
-    assert updater.check("o/PIIGuard") is None
+    assert updater.check("o/SENSIQ") is None
 
 
 def test_tampered_download_is_rejected(monkeypatch, tmp_path):
     _fake_github(monkeypatch, b"evil", hashlib.sha256(b"good").hexdigest())
     monkeypatch.setattr(updater, "updates_dir", lambda: tmp_path)
-    info = updater.check("o/PIIGuard")
+    info = updater.check("o/SENSIQ")
     with pytest.raises(RuntimeError, match="checksum"):
         updater.download(info)
-    assert not list(tmp_path.glob("PIIGuard-Setup-*.exe"))
+    assert not list(tmp_path.glob("SENSIQ-Setup-*.exe"))
 
 
 def test_release_without_checksum_is_not_installed(monkeypatch, tmp_path):
     _fake_github(monkeypatch, b"x", "", with_sha=False)
     monkeypatch.setattr(updater, "updates_dir", lambda: tmp_path)
-    info = updater.check("o/PIIGuard")
+    info = updater.check("o/SENSIQ")
     with pytest.raises(RuntimeError, match="checksum"):
         updater.download(info)
 

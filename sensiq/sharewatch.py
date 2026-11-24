@@ -158,7 +158,7 @@ class FileScanWorker(_Logged):
                     self.events.put(("redact_done", False, "Couldn't make the safe copy. The original was not shared."))
                 elif ctx is not None and ctx.reply is not None:
                     ctx.reply("original")    # a failed check mustn't freeze the page
-                    self.events.put(("files_unchecked", "PII Guard couldn't check the file the page received. "
+                    self.events.put(("files_unchecked", "SENSIQ couldn't check the file the page received. "
                                                         "Look through it yourself."))
             finally:
                 if job[0] != "redact":
@@ -202,7 +202,7 @@ class FileScanWorker(_Logged):
         if unchecked:
             names = "; ".join(f"{r.name}: {r.note}" for r in unchecked[:4])
             more = f" (and {len(unchecked) - 4} more)" if len(unchecked) > 4 else ""
-            self.events.put(("files_unchecked", f"PII Guard couldn't check {names}{more}. "
+            self.events.put(("files_unchecked", f"SENSIQ couldn't check {names}{more}. "
                                                 "Look through it yourself before you share it."))
         if flagged:
             self.events.put(("file_report", ctx, flagged))
@@ -401,7 +401,7 @@ class FileScanWorker(_Logged):
         what = f"Replaced {replaced} detail{'s' if replaced != 1 else ''}"
         if kept:
             one_file = len(kept) == 1
-            what += (f". {', '.join(kept[:3])} {'is' if one_file else 'are'} in a format PII Guard can't change "
+            what += (f". {', '.join(kept[:3])} {'is' if one_file else 'are'} in a format SENSIQ can't change "
                      f"safely (old Office file or a ZIP with locked files), so {'it was' if one_file else 'they were'} "
                      "left as is. Save Office files as .docx/.xlsx/.pptx and try again")
             missed = 0  # already explained
@@ -566,7 +566,7 @@ def _root_class(x: int, y: int) -> Tuple[int, str]:
 class DragWatcher(_Logged):
     """Files dragged out of File Explorer / the desktop. The check runs when they are dropped:
     drops back into Explorer (moving files) are ignored, and drops onto a browser page that the
-    PII Guard extension protects are left to the extension (no double card)."""
+    SENSIQ extension protects are left to the extension (no double card)."""
 
     def __init__(self, scanner: FileScanWorker, config, stop_event: threading.Event, skip_apps=None):
         super().__init__(name="DragWatcher", daemon=True)
@@ -973,7 +973,7 @@ class DialogWatcher(_Logged):
                     hwnd = winutil.foreground_window()
                     is_dialog = bool(hwnd) and self._class(hwnd) == "#32770"
                     if is_dialog and hwnd != dialog and winutil.window_pid(hwnd) == os.getpid():
-                        continue  # PII Guard's own window (e.g. choosing the safe-copies folder)
+                        continue  # SENSIQ's own window (e.g. choosing the safe-copies folder)
                     if is_dialog and hwnd != dialog and \
                             winutil.process_name(winutil.window_pid(hwnd)) in self.skip_apps():
                         continue  # the browser extension checks this upload when the page receives it

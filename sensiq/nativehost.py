@@ -1,7 +1,7 @@
-"""Native-messaging host for the PII Guard browser extension.
+"""Native-messaging host for the SENSIQ browser extension.
 
-The browser starts `PIIGuard.exe chrome-extension://<id>/` with stdin/stdout connected to the
-extension. This process only relays: browser messages go to the running PII Guard app over a
+The browser starts `SENSIQ.exe chrome-extension://<id>/` with stdin/stdout connected to the
+extension. This process only relays: browser messages go to the running SENSIQ app over a
 private named pipe (per Windows user, protected by a random key in %APPDATA%), and the app's
 answers go back to the browser. It never reads files or goes online itself.
 
@@ -24,7 +24,7 @@ MAX_TO_BROWSER = 1024 * 1024  # the browser refuses host messages over 1 MB
 
 def pipe_address() -> str:
     user = os.environ.get("USERNAME", "user").replace("\\", "_")
-    return rf"\\.\pipe\PIIGuard-{user}-link"
+    return rf"\\.\pipe\SENSIQ-{user}-link"
 
 
 def link_key(create: bool = False) -> bytes:
@@ -120,13 +120,13 @@ def main() -> int:
     except Exception:
         conn = None
 
-    if conn is None:  # PII Guard isn't running: answer every check with "go ahead"
+    if conn is None:  # SENSIQ isn't running: answer every check with "go ahead"
         try:
             while True:
                 msg = std.read_message()
                 if msg.get("op") == "checkend":
                     std.write_message({"op": "result", "id": msg["id"], "action": "original",
-                                       "reason": "PII Guard isn't running", "files": []})
+                                       "reason": "SENSIQ isn't running", "files": []})
                     std.write_message({"op": "end", "id": msg["id"]})
         except (EOFError, OSError):
             return 0

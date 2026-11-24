@@ -2,13 +2,13 @@ import random
 
 import pytest
 
-from piiguard.config import Config, IgnoreList
-from piiguard.detector.engine import DetectionEngine, resolve_overlaps
-from piiguard.detector.rules import RuleDetector
-from piiguard.detector.types import Finding
-from piiguard.detector import validators as v
-from piiguard.masking import suggest
-from piiguard.selftest import CLEAN, SAMPLE
+from sensiq.config import Config, IgnoreList
+from sensiq.detector.engine import DetectionEngine, resolve_overlaps
+from sensiq.detector.rules import RuleDetector
+from sensiq.detector.types import Finding
+from sensiq.detector import validators as v
+from sensiq.masking import suggest
+from sensiq.selftest import CLEAN, SAMPLE
 
 
 def kinds(text):
@@ -137,7 +137,7 @@ def test_ner_aggregation(tmp_path):
     np = pytest.importorskip("numpy")
     tokenizers = pytest.importorskip("tokenizers")
     from tokenizers import Tokenizer, models, normalizers, pre_tokenizers, processors
-    from piiguard.detector.ner import NerModel
+    from sensiq.detector.ner import NerModel
 
     vocab = {t: i for i, t in enumerate(
         ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "Hi", ",", "I", "am", "Rahul", "Sha", "##rma", "from", "Bhilai", "."])}

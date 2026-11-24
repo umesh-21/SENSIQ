@@ -18,7 +18,7 @@ $py = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } e
 & $py tools\set_version.py $Version; if ($LASTEXITCODE) { throw "set_version failed" }
 git add -A
 git commit -m "Release $Version"
-git tag -a "v$Version" -m "PII Guard $Version"
+git tag -a "v$Version" -m "SENSIQ $Version"
 git push origin HEAD
 git push origin "v$Version"
 Write-Host "`nPushed v$Version. GitHub is building the release; follow it under the repository's Actions tab." -ForegroundColor Green

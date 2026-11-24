@@ -1,9 +1,9 @@
-// PII Guard - holds files a page is about to receive (upload button, drag and drop, paste),
-// has the PII Guard app on this computer check them, then gives the page either the
+// SENSIQ - holds files a page is about to receive (upload button, drag and drop, paste),
+// has the SENSIQ app on this computer check them, then gives the page either the
 // original or the safe copy you chose. If the app isn't running, nothing is held.
 (() => {
-  if (window.__piiGuardContent) return;
-  window.__piiGuardContent = true;
+  if (window.__sensiqContent) return;
+  window.__sensiqContent = true;
 
   const CHUNK = 3 * 1024 * 1024;        // bytes per message to the app
   const WAIT_MS = 10 * 60 * 1000;       // longest a page waits for your choice
@@ -13,7 +13,7 @@
 
   function connect() {
     if (port) return port;
-    port = chrome.runtime.connect({ name: "piiguard" });
+    port = chrome.runtime.connect({ name: "sensiq" });
     port.onMessage.addListener(onReply);
     port.onDisconnect.addListener(() => {
       port = null;
@@ -83,8 +83,8 @@
     return done;
   }
 
-  const mark = (ev) => { ev.__piiGuard = true; return ev; };
-  const ours = (ev) => ev.__piiGuard === true;
+  const mark = (ev) => { ev.__sensiq = true; return ev; };
+  const ours = (ev) => ev.__sensiq === true;
   const listOf = (fileList) => Array.from(fileList || []);
 
   function dataTransferOf(files) {
@@ -148,10 +148,10 @@
   // ---- sites using the File System Access picker (page.js asks us) --------------------
   window.addEventListener("message", async (ev) => {
     const m = ev.data;
-    if (!m || m.__piiGuardAsk !== true || !Array.isArray(m.files)) return;
-    window.postMessage({ __piiGuardAck: true, id: m.id }, "*");
+    if (!m || m.__sensiqAsk !== true || !Array.isArray(m.files)) return;
+    window.postMessage({ __sensiqAck: true, id: m.id }, "*");
     const r = await check(m.files, "picker");
-    window.postMessage({ __piiGuardAnswer: true, id: m.id, action: r.action,
+    window.postMessage({ __sensiqAnswer: true, id: m.id, action: r.action,
                          files: r.action === "safe" ? r.files : null }, "*");
   });
 })();

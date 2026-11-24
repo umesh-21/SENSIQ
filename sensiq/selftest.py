@@ -35,7 +35,7 @@ def run_selftest(report_path: Optional[Path] = None, use_ner: bool = True) -> Tu
 
     cfg = Config.defaults()
     cfg.data["ner"]["enabled"] = use_ner
-    lines = [f"PII Guard {__version__} self-test",
+    lines = [f"SENSIQ {__version__} self-test",
              f"Python {sys.version.split()[0]} on {platform.platform()}",
              f"Models folder: {models_dir()}", ""]
 

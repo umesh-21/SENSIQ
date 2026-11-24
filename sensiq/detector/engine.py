@@ -109,7 +109,7 @@ class DetectionEngine:
         return resolve_overlaps(extend_initials(text, findings))
 
     def _never(self, f: Finding) -> bool:
-        """Names/places you told PII Guard never to flag (settings: never_flag_words)."""
+        """Names/places you told SENSIQ never to flag (settings: never_flag_words)."""
         if f.kind not in ("PERSON", "LOCATION", "ORG"):
             return False
         words = self.config.data.get("never_flag_words") or []

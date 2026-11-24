@@ -15,17 +15,17 @@ def resource_dir() -> Path:
 
 
 def models_dir() -> Path:
-    override = os.environ.get("PIIGUARD_MODELS")
+    override = os.environ.get("SENSIQ_MODELS")
     return Path(override) if override else resource_dir() / "models"
 
 
 _custom_safe: "Path | None" = None   # folder the user chose for safe copies (None = default)
-REG_KEY = r"Software\PIIGuard"
+REG_KEY = r"Software\SENSIQ"
 REG_SAFE = "SafeCopiesFolder"          # written by the installer's "Safe copies folder" page
 
 
 def _local_root() -> Path:
-    return Path(os.environ.get("LOCALAPPDATA") or str(Path.home() / ".cache")) / "PIIGuard"
+    return Path(os.environ.get("LOCALAPPDATA") or str(Path.home() / ".cache")) / "SENSIQ"
 
 
 def default_safe_copies_dir() -> Path:
@@ -47,7 +47,7 @@ def safe_copies_is_custom() -> bool:
 
 def safe_copies_dir() -> Path:
     """Where safe (redacted) copies are written: the folder chosen during installation or in
-    the tray menu, else %LOCALAPPDATA%/PIIGuard/Safe copies (cleared after a day)."""
+    the tray menu, else %LOCALAPPDATA%/SENSIQ/Safe copies (cleared after a day)."""
     if _custom_safe is not None:
         try:
             _custom_safe.mkdir(parents=True, exist_ok=True)
@@ -89,6 +89,6 @@ def remember_safe_copies_folder(folder: str) -> None:
 def data_dir() -> Path:
     """Per-user writable folder: settings, ignore list, log."""
     root = os.environ.get("APPDATA") or str(Path.home() / ".config")
-    d = Path(root) / "PIIGuard"
+    d = Path(root) / "SENSIQ"
     d.mkdir(parents=True, exist_ok=True)
     return d
