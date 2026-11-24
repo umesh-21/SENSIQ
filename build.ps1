@@ -15,6 +15,7 @@
 #>
 param(
     [string]$Model = "Xenova/bert-base-NER",
+    [string]$Python = "",
     [switch]$SkipInstaller,
     [switch]$SkipTests
 )
@@ -28,9 +29,16 @@ function Check($what) { if ($LASTEXITCODE -ne 0) { throw "$what failed (exit cod
 # 1. Python ---------------------------------------------------------------------------
 Step "Checking for 64-bit Python 3.10 - 3.12"
 $pyExe = $null; $pyArgs = @()
-if (Get-Command py -ErrorAction SilentlyContinue) { $pyExe = "py"; $pyArgs = @("-3") }
-elseif (Get-Command python -ErrorAction SilentlyContinue) { $pyExe = "python" }
-else { throw "Python not found. Install Python 3.11 (64-bit) from python.org and tick 'Add to PATH'." }
+if ($Python) { $pyExe = $Python }
+elseif (Get-Command py -ErrorAction SilentlyContinue) {
+    # the launcher's plain "-3" picks the newest Python, which may be too new for the packages
+    foreach ($v in @("3.11", "3.12", "3.10")) {
+        & py "-$v" -c "import sys" 2>$null
+        if ($LASTEXITCODE -eq 0) { $pyExe = "py"; $pyArgs = @("-$v"); break }
+    }
+}
+if (-not $pyExe -and (Get-Command python -ErrorAction SilentlyContinue)) { $pyExe = "python" }
+if (-not $pyExe) { throw "Python not found. Install Python 3.11 (64-bit) from python.org and tick 'Add to PATH'." }
 & $pyExe @pyArgs -c "import sys,struct; v=sys.version_info; assert (3,10)<=v[:2]<=(3,12), 'Use Python 3.10-3.12, found %d.%d' % v[:2]; assert struct.calcsize('P')==8, 'Use 64-bit Python'; print(sys.version)"
 Check "Python check"
 

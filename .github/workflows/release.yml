@@ -44,7 +44,7 @@ jobs:
 
       - name: Build app and setup file
         shell: pwsh
-        run: ./build.ps1 -SkipTests
+        run: ./build.ps1 -SkipTests -Python (Join-Path $env:pythonLocation "python.exe")
 
       - name: Unit tests (informational; some need Windows OCR, missing on servers)
         shell: pwsh
