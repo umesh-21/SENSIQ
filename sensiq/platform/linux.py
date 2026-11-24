@@ -26,6 +26,7 @@ STARTUP_LABEL = "Start when I sign in"
 FILE_MANAGER = "Files"
 IPC_FAMILY = "AF_UNIX"
 AUTOSTART_NAME = "sensiq.desktop"
+SYSTEM_AUTOSTART = Path("/etc/xdg/autostart") / AUTOSTART_NAME   # put there by the .deb
 
 _tk = None          # the app's Tk root, for screen sizes
 _lock_file = None   # keeps the single-instance lock while the app runs
@@ -278,9 +279,11 @@ def launch_command() -> str:
 
 
 def is_startup_enabled() -> bool:
+    """The installed app starts at sign-in for everyone (/etc/xdg/autostart); a user's own
+    ~/.config/autostart/sensiq.desktop overrides that either way."""
     f = _autostart_file()
     if not f.exists():
-        return False
+        return SYSTEM_AUTOSTART.exists()
     try:
         text = f.read_text(encoding="utf-8")
     except OSError:
@@ -290,7 +293,13 @@ def is_startup_enabled() -> bool:
 
 def set_startup(enabled: bool) -> None:
     f = _autostart_file()
-    if not enabled:
+    if enabled and SYSTEM_AUTOSTART.exists():
+        try:          # the system entry starts it; just drop the user's "off" override
+            f.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    if not enabled and not SYSTEM_AUTOSTART.exists():
         try:
             f.unlink()
         except FileNotFoundError:
@@ -300,7 +309,8 @@ def set_startup(enabled: bool) -> None:
     f.write_text("[Desktop Entry]\nType=Application\nName=SENSIQ\n"
                  "Comment=Checks for private details before you share\n"
                  f"Exec={launch_command()}\nIcon=sensiq\nTerminal=false\n"
-                 "X-GNOME-Autostart-enabled=true\nX-GNOME-Autostart-Delay=5\n", encoding="utf-8")
+                 + ("X-GNOME-Autostart-enabled=true\nX-GNOME-Autostart-Delay=5\n" if enabled
+                    else "Hidden=true\nX-GNOME-Autostart-enabled=false\n"), encoding="utf-8")
 
 
 # ---- opening things ---------------------------------------------------------------------

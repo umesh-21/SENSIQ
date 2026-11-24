@@ -112,7 +112,11 @@ class Tray:
         )
 
     def start(self) -> None:
-        self.icon.run_detached()
+        try:
+            self.icon.run_detached()
+            log.info("tray icon started (%s)", type(self.icon).__module__)
+        except Exception:   # no tray on this desktop: SENSIQ keeps working without the icon
+            log.exception("tray icon couldn't start")
 
     def refresh(self) -> None:
         try:

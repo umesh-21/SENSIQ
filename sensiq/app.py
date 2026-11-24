@@ -109,7 +109,8 @@ class App:
                 log.exception("Image and file checks unavailable")
         try:
             from .control import ControlServer
-            self.share_threads.append(ControlServer(lambda paths: self.events.put(("check_files", paths)), self.stop))
+            self.share_threads.append(ControlServer(lambda paths: self.events.put(("check_files", paths)), self.stop,
+                                                    on_show=lambda: self.events.put(("show",))))
         except Exception:
             log.exception("control channel unavailable")
         try:
@@ -159,6 +160,8 @@ class App:
         self.root.after(1500, lambda: self._notify(hello))
         if plat.IS_LINUX:
             self.root.after(800, self._linux_integration)
+            self.root.after(6000, self._linux_tray_check)
+            self.root.after(9000, lambda: self._offer_typing(first_time=True))
         if getattr(self.args, "check", None):
             paths = list(self.args.check)
             self.root.after(2000, lambda: self._handle(("check_files", paths)))
@@ -307,6 +310,10 @@ class App:
         elif kind == "fatal":
             plat.message_box(ev[1], APP_NAME, error=True)
             self.quit()
+        elif kind == "show":   # opened again from the app list
+            self._on_tray("status")
+            if plat.IS_LINUX:
+                self.root.after(5500, lambda: self._offer_typing(first_time=False))
         elif kind == "typing_off":   # Linux: AT-SPI unavailable; files are still checked
             log.info("typing checks unavailable: %s", ev[1])
 
@@ -572,9 +579,13 @@ class App:
     # ---- tray actions --------------------------------------------------------------------
     def _on_tray(self, action: str) -> None:
         if action == "status":
-            if self.config.data.get("enabled", True):
+            if self.config.data.get("enabled", True) and plat.IS_WIN:
                 self.overlay.toast("SENSIQ is on. It checks what you type and the images and files you "
                                    "copy, drag or upload. Right-click the shield for options.", "ok", ms=5000)
+            elif self.config.data.get("enabled", True):
+                self.overlay.toast("SENSIQ is on. It checks images and files you copy or upload, and what you "
+                                   "type if typing checks are on. Click the shield in the top bar for options; "
+                                   "in Files, right-click a file → Scripts → Check with SENSIQ.", "ok", ms=7000)
             else:
                 self.overlay.toast("SENSIQ is PAUSED: nothing is being checked. Right-click the shield and "
                                    "choose Resume protection.", "warn", ms=7000)
@@ -647,6 +658,8 @@ class App:
             plat.open_path(log_dir())
         elif action == "quit":
             self.quit()
+        elif action == "refresh":
+            pass
         if self.tray:
             self.tray.refresh()
 
@@ -743,6 +756,49 @@ Brave: <code>brave://extensions</code>).{linux_note}</li>
             self.overlay.toast("Couldn't turn on typing checks: this desktop has no accessibility service.",
                                "warn", ms=8000)
 
+    def _offer_typing(self, first_time: bool) -> None:
+        """Linux: typing checks need the desktop's accessibility switch; offer it with a button
+        (once at the first start, and whenever SENSIQ is opened again while it's off)."""
+        try:
+            from .capture_linux import accessibility_enabled
+            if accessibility_enabled():
+                return
+        except Exception:
+            return
+        if first_time:
+            if self.config.data.get("linux_typing_offered"):
+                return
+            self.config.data["linux_typing_offered"] = True
+            self.config.save()
+        self.overlay.offer("Warn me while I type too? SENSIQ can check what you type in apps and websites "
+                           "(test version). Ubuntu's accessibility setting is switched on for this.",
+                           "Turn on", self._typing_setup, ms=30000)
+
+    def _linux_tray_check(self) -> None:
+        """Ubuntu shows tray icons through its AppIndicators extension: if nothing shows them,
+        try switching it on, else say where SENSIQ's options are."""
+        def work():
+            from . import linuxdesktop
+            host = linuxdesktop.tray_host_present()
+            log.info("tray host on this desktop: %s", host)
+            if self.tray is None or host:
+                return
+            if linuxdesktop.enable_appindicator_extension():
+                import time
+                for _ in range(10):
+                    time.sleep(0.5)
+                    if linuxdesktop.tray_host_present():
+                        log.info("switched on the AppIndicators extension for the tray icon")
+                        self.events.put(("tray", "refresh"))
+                        return
+            log.warning("no tray host (StatusNotifierWatcher) on this desktop")
+            self.events.put(("files_unchecked",
+                             "SENSIQ is on, but this desktop can't show its shield in the top bar. Turn on "
+                             "\"Ubuntu AppIndicators\" in the Extensions app (or install "
+                             "gnome-shell-extension-appindicator), then sign out and back in. "
+                             "Files are still checked: right-click a file → Scripts → Check with SENSIQ."))
+        threading.Thread(target=work, name="tray-check", daemon=True).start()
+
     def _linux_integration(self) -> None:
         """Files (Nautilus) right-click script "Check with SENSIQ"; kept in step with this install."""
         try:
@@ -833,6 +889,10 @@ def main(argv=None) -> int:
             from .control import send_check
             if send_check(args.check):
                 return 0
+        else:
+            from .control import send_show
+            if send_show():
+                return 0   # the running SENSIQ shows that it's on
         plat.message_box("SENSIQ is already running. Look for the shield icon in the "
                          + ("system tray." if plat.IS_WIN else "top bar."))
         return 0

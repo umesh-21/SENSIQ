@@ -37,6 +37,44 @@ exec {command} --check "$@"
 """
 
 
+APPINDICATOR_EXTENSIONS = ("ubuntu-appindicators@ubuntu.com", "appindicatorsupport@rgcjonas.gmail.com")
+
+
+def tray_host_present() -> bool:
+    """Is something on this desktop showing tray icons (a StatusNotifierWatcher on D-Bus)?
+    True when it can't be told, so SENSIQ never complains by mistake."""
+    from .platform import child_env
+    if not shutil.which("gdbus"):
+        return True
+    import subprocess
+    try:
+        r = subprocess.run(["gdbus", "call", "--session", "--dest", "org.freedesktop.DBus",
+                            "--object-path", "/org/freedesktop/DBus", "--method",
+                            "org.freedesktop.DBus.NameHasOwner", "org.kde.StatusNotifierWatcher"],
+                           capture_output=True, text=True, timeout=5, env=child_env())
+    except Exception:
+        return True
+    if r.returncode != 0:
+        return True
+    return "true" in r.stdout
+
+
+def enable_appindicator_extension() -> bool:
+    """Switch on GNOME's tray-icon extension for this user (no root). True if a command worked."""
+    from .platform import child_env
+    if not shutil.which("gnome-extensions"):
+        return False
+    import subprocess
+    ok = False
+    for ext in APPINDICATOR_EXTENSIONS:
+        try:
+            r = subprocess.run(["gnome-extensions", "enable", ext], capture_output=True, timeout=4, env=child_env())
+            ok = ok or r.returncode == 0
+        except Exception:
+            pass
+    return ok
+
+
 def install_files_script(force: bool = False) -> bool:
     """Write (or refresh) the script when Files is installed. Leaves a file the user made alone."""
     from .platform import launch_command

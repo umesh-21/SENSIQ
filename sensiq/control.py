@@ -25,6 +25,15 @@ def _key(create: bool = False) -> bytes:
 
 def send_check(paths: List[str], timeout: float = 5.0) -> bool:
     """Give these files to the running SENSIQ to check. False if it isn't running."""
+    return _send({"op": "check", "paths": [str(Path(p).resolve()) for p in paths]}, timeout)
+
+
+def send_show(timeout: float = 5.0) -> bool:
+    """SENSIQ was opened again from the app list: the running one shows that it's on."""
+    return _send({"op": "show"}, timeout)
+
+
+def _send(msg: dict, timeout: float) -> bool:
     from multiprocessing.connection import Client
     key = _key()
     if not key:
@@ -34,7 +43,7 @@ def send_check(paths: List[str], timeout: float = 5.0) -> bool:
     except Exception:
         return False
     try:
-        conn.send({"op": "check", "paths": [str(Path(p).resolve()) for p in paths]})
+        conn.send(msg)
         return bool(conn.poll(timeout) and conn.recv() == "ok")
     except Exception:
         return False
@@ -48,9 +57,11 @@ def send_check(paths: List[str], timeout: float = 5.0) -> bool:
 class ControlServer(threading.Thread):
     """Accepts check requests from later starts and passes them to on_check(paths)."""
 
-    def __init__(self, on_check: Callable[[List[str]], None], stop_event: threading.Event):
+    def __init__(self, on_check: Callable[[List[str]], None], stop_event: threading.Event,
+                 on_show: Callable[[], None] = lambda: None):
         super().__init__(name="ControlServer", daemon=True)
         self.on_check = on_check
+        self.on_show = on_show
         self.stop_event = stop_event
 
     def run(self) -> None:
@@ -84,6 +95,9 @@ class ControlServer(threading.Thread):
                         paths = [str(p) for p in msg.get("paths") or [] if isinstance(p, str)]
                         if paths:
                             self.on_check(paths)
+                        conn.send("ok")
+                    elif isinstance(msg, dict) and msg.get("op") == "show":
+                        self.on_show()
                         conn.send("ok")
             except Exception:
                 log.debug("control request failed", exc_info=True)

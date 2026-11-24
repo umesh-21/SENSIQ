@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=SENSIQ
+Comment=Checks for private details before you share
+Exec=/usr/bin/sensiq
+Icon=sensiq
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5

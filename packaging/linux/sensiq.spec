@@ -16,6 +16,18 @@ for pkg in ("presidio_analyzer", "spacy", "thinc", "en_core_web_sm", "pypdfium2"
     binaries += b
     hiddenimports += h
 datas += collect_data_files("phonenumbers")
+
+# AT-SPI (typing checks): gi.repository modules are virtual, so PyInstaller doesn't run a hook
+# for a hidden import of gi.repository.Atspi; collect its typelib and library directly
+from PyInstaller.utils.hooks.gi import GiModuleInfo  # noqa: E402
+_atspi = GiModuleInfo("Atspi", "2.0")
+if _atspi.available:
+    b, d, h = _atspi.collect_typelib_data()
+    binaries += b
+    datas += d
+    hiddenimports += h
+else:
+    raise SystemExit("gir1.2-atspi-2.0 is missing: sudo apt install gir1.2-atspi-2.0")
 hiddenimports += collect_submodules("phonenumbers")
 
 EXCLUDES = [
@@ -31,7 +43,7 @@ a = Analysis(  # noqa: F821
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[f"{ROOT}/packaging/linux/hooks"],
+    hookspath=[],
     # GTK is only used for the tray menu (drawn by the desktop): no icon themes or GTK themes
     hooksconfig={"gi": {"icons": ["Adwaita"], "themes": ["Adwaita"], "languages": ["en_GB", "hi"],
                         "module-versions": {"Gtk": "3.0"}}},

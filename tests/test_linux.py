@@ -427,12 +427,16 @@ def _atspi_ready():
 
 
 @pytest.mark.skipif(not _atspi_ready(), reason="needs a display, dbus-run-session, AT-SPI and GTK (python3-gi)")
-def test_typing_checks_with_atspi():
+def test_typing_checks_with_atspi(tmp_path):
     """A GTK text box with an Aadhaar number: SENSIQ reads it, replaces the number inside the app,
     and never reads the password box."""
     helper = Path(__file__).resolve().parent / "atspi_helper.py"
+    # a private home: switching accessibility on must not touch the real user's GNOME settings
+    env = dict(os.environ, HOME=str(tmp_path), XDG_CONFIG_HOME=str(tmp_path / "config"),
+               XDG_DATA_HOME=str(tmp_path / "data"), XDG_STATE_HOME=str(tmp_path / "state"),
+               GSETTINGS_BACKEND="memory")
     r = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3", str(helper), "drive"],
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, timeout=120, env=env)
     line = [l for l in r.stdout.splitlines() if l.startswith("REPORT ")]
     assert line, r.stdout[-2000:] + r.stderr[-2000:]
     rep = json.loads(line[0][7:])
@@ -442,3 +446,41 @@ def test_typing_checks_with_atspi():
     assert rep["entry_after"] == "My Aadhaar is XXXX XXXX 7615 ok"
     assert "4918 3205 7615" not in [f for f in rep["fields"] if f]           # the password box's text
     assert rep["fields"][-1] is None                                          # focus on it: no field
+
+
+def test_installed_app_starts_at_sign_in_and_can_be_switched_off(home, tmp_path, monkeypatch):
+    """The .deb's /etc/xdg/autostart entry starts SENSIQ for everyone; the tray switch writes
+    a per-user override."""
+    from sensiq.platform import linux
+    system = tmp_path / "etc-autostart" / "sensiq.desktop"
+    system.parent.mkdir()
+    system.write_text("[Desktop Entry]\nExec=/usr/bin/sensiq\n")
+    monkeypatch.setattr(linux, "SYSTEM_AUTOSTART", system)
+    user = home / "config" / "autostart" / "sensiq.desktop"
+    assert linux.is_startup_enabled()
+    linux.set_startup(False)
+    assert "Hidden=true" in user.read_text() and not linux.is_startup_enabled()
+    linux.set_startup(True)
+    assert not user.exists() and linux.is_startup_enabled()
+
+
+def test_opening_sensiq_again_reaches_the_running_app(home):
+    from sensiq import control
+    shown = []
+    stop = threading.Event()
+    srv = control.ControlServer(lambda p: None, stop, on_show=lambda: shown.append(1))
+    srv.start()
+    sock = home / "run" / "sensiq" / "control.sock"
+    for _ in range(50):
+        if sock.exists():
+            break
+        time.sleep(0.05)
+    assert control.send_show() and shown == [1]
+    stop.set()
+
+
+def test_tray_host_check_never_complains_by_mistake(monkeypatch):
+    from sensiq import linuxdesktop
+    monkeypatch.setattr(linuxdesktop.shutil, "which", lambda name: None)
+    assert linuxdesktop.tray_host_present() is True
+    assert linuxdesktop.enable_appindicator_extension() is False

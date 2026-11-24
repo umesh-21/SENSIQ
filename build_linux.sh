@@ -117,6 +117,7 @@ cp -a dist/sensiq "$PKG/opt/sensiq"
 cp assets/sensiq.png "$PKG/opt/sensiq/sensiq.png"
 ln -s /opt/sensiq/sensiq "$PKG/usr/bin/sensiq"
 install -m 644 packaging/linux/sensiq.desktop "$PKG/usr/share/applications/sensiq.desktop"
+install -D -m 644 packaging/linux/sensiq-autostart.desktop "$PKG/etc/xdg/autostart/sensiq.desktop"
 install -m 644 assets/sensiq.png "$PKG/usr/share/icons/hicolor/256x256/apps/sensiq.png"
 for s in 48 128; do
   mkdir -p "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"
