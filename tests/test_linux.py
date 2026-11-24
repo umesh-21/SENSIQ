@@ -504,3 +504,43 @@ def test_tray_icon_registers_with_the_top_bar(home):
     r = subprocess.run(["dbus-run-session", "--", sys.executable, str(helper), sys.executable, "-m", "sensiq"],
                        cwd=root, env=env, capture_output=True, text=True, timeout=120)
     assert "REGISTERED" in r.stdout, r.stdout[-1500:] + r.stderr[-1500:]
+
+
+def test_cards_go_on_the_monitor_not_the_whole_x_screen(tmp_path, monkeypatch):
+    """A 2944 px X screen with one 1920 px monitor: the bottom-right corner must be the monitor's,
+    or every card lands in the invisible part."""
+    from sensiq.platform import linux
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "xrandr").write_text("#!/bin/sh\necho 'Monitors: 1'\necho ' 0: +*DP-5 1920/598x1080/336+0+0  DP-5'\n")
+    (bin_dir / "xrandr").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    monkeypatch.setenv("DISPLAY", ":99")
+    monkeypatch.setattr(linux, "_mon_cache", (0.0, []))
+    monkeypatch.setattr(linux, "_work_cache", (0.0, None))
+    monkeypatch.setattr(linux, "_screen", lambda: (2944, 1080))
+    monkeypatch.setattr(linux, "_net_workarea", lambda: (0, 32, 2944, 1080))
+    assert linux.monitors() == [(0, 0, 1920, 1080, True)]
+    assert linux.work_area() == (0, 32, 1920, 1080)
+    assert linux.virtual_screen() == (0, 0, 1920, 1080)
+
+
+def test_debug_log_never_holds_document_words(home):
+    """--debug must not let libraries (Presidio logs 'Context list is: <words>') write file contents."""
+    import logging
+    from sensiq import app
+    root = logging.getLogger()
+    before = list(root.handlers)
+    try:
+        app.setup_logging(True)
+        logging.getLogger("presidio-analyzer").debug("Context list is: ramesh kumar 4918")
+        for h in root.handlers:
+            h.flush()
+        text = (home / "state" / "sensiq" / "sensiq.log").read_text()
+        assert "ramesh" not in text
+    finally:
+        for h in list(root.handlers):
+            if h not in before:
+                root.removeHandler(h)
+                h.close()
+        root.setLevel(logging.WARNING)

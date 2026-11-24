@@ -185,7 +185,47 @@ def _screen() -> Tuple[int, int]:
     return 1920, 1080
 
 
+_mon_cache: Tuple[float, list] = (0.0, [])
+
+
+def monitors() -> list:
+    """[(left, top, width, height, primary)] of the connected monitors (xrandr). The X screen can
+    be bigger than the monitors (e.g. 2944 px wide with one 1920 px monitor): anything placed in
+    the rest would be invisible."""
+    global _mon_cache
+    at, mons = _mon_cache
+    if time.monotonic() - at < 30:
+        return mons
+    mons = []
+    if os.environ.get("DISPLAY") and shutil.which("xrandr"):
+        import re
+        try:
+            out = _quiet(["xrandr", "--listmonitors"], timeout=3).stdout.decode("utf-8", "replace")
+            for line in out.splitlines()[1:]:
+                m = re.search(r"(\d+)/\d+x(\d+)/\d+\+(-?\d+)\+(-?\d+)", line)
+                if m:
+                    w, h, x, y = (int(v) for v in m.groups())
+                    mons.append((x, y, w, h, "*" in line.split(m.group(0))[0]))
+        except Exception:
+            mons = []
+    _mon_cache = (time.monotonic(), mons)
+    return mons
+
+
+def _primary() -> Optional[Tuple[int, int, int, int]]:
+    mons = monitors()
+    if not mons:
+        return None
+    x, y, w, h, _ = next((m for m in mons if m[4]), mons[0])
+    return (x, y, x + w, y + h)
+
+
 def virtual_screen() -> Tuple[int, int, int, int]:
+    mons = monitors()
+    if mons:
+        left = min(m[0] for m in mons)
+        top = min(m[1] for m in mons)
+        return (left, top, max(m[0] + m[2] for m in mons) - left, max(m[1] + m[3] for m in mons) - top)
     w, h = _screen()
     return (0, 0, w, h)
 
@@ -217,8 +257,17 @@ def work_area() -> Tuple[int, int, int, int]:
         _work_cache = (time.monotonic(), area)
     sw, sh = _screen()
     if area is None or area[2] > sw + 1 or area[3] > sh + 1:
-        return (0, 32, sw, sh)  # Ubuntu's top bar; the dock is on the left by default
-    return area
+        area = (0, 32, sw, sh)  # Ubuntu's top bar; the dock is on the left by default
+    mon = _primary()
+    if mon is None:
+        return area
+    # cards go on the primary monitor: the free area there (without the top bar)
+    left, top = max(area[0], mon[0]), max(area[1], mon[1])
+    right, bottom = min(area[2], mon[2]), min(area[3], mon[3])
+    if right - left < 300 or bottom - top < 200:
+        top = mon[1] + (32 if mon[1] == 0 else 0)
+        return (mon[0], top, mon[2], mon[3])
+    return (left, top, right, bottom)
 
 
 # ---- messages and notifications ---------------------------------------------------------

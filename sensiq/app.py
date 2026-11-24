@@ -40,6 +40,10 @@ def setup_logging(debug: bool) -> None:
         log_dir() / "sensiq.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")
     handler.setFormatter(fmt)
     root.addHandler(handler)
+    # third-party libraries log document words at DEBUG level (Presidio: "Context list is: ...");
+    # file contents must never reach the log, even with --debug
+    for name in ("presidio-analyzer", "presidio_analyzer", "spacy", "PIL", "matplotlib", "urllib3"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     if debug and sys.stderr is not None:
         stream = logging.StreamHandler()
         stream.setFormatter(fmt)
