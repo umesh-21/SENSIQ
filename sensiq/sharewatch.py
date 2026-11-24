@@ -26,7 +26,6 @@ import logging
 import os
 import queue
 import shutil
-import subprocess
 import threading
 import time
 import zipfile
@@ -34,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from . import filescan, winutil
+from . import filescan, platform as plat
 from .detector.types import HIGH
 from .paths import default_safe_copies_dir, safe_copies_dir, work_dir
 
@@ -71,6 +70,11 @@ class FileResult:
     extracted: Optional[filescan.Extracted] = None
     can_redact: bool = True        # False: details can be shown but no safe copy can be made
     unchecked: bool = False        # True: the file couldn't be checked (password, damaged...)
+
+
+def _pkey(p) -> str:
+    """A path as a dictionary key: case-insensitive on Windows, exact on Linux."""
+    return os.path.normcase(str(p))
 
 
 def _is_safe_copy(p) -> bool:
@@ -112,7 +116,7 @@ class FileScanWorker(_Logged):
         self._cache: Dict[tuple, FileResult] = {}
         self._own_images: set = set()     # digests of safe images we put on the clipboard
         self._quiet_until = 0.0           # ignore clipboard changes we made ourselves
-        self._zip_members: Dict[str, Tuple[Path, str]] = {}   # unpacked file -> (zip, member name)
+        self._zip_members: Dict[str, Tuple[Path, str, Path]] = {}   # unpacked file -> (zip, member name, file)
         self._zip_notes: Dict[str, str] = {}
 
     def _opts(self) -> dict:
@@ -196,7 +200,7 @@ class FileScanWorker(_Logged):
         unchecked = [r for r in results if r.unchecked]
         if kind != "image":  # problems inside ZIPs (encrypted members, damaged archive)
             for raw in payload:
-                note = self._zip_notes.pop(str(raw).lower(), None)
+                note = self._zip_notes.pop(_pkey(raw), None)
                 if note:
                     unchecked.append(FileResult(Path(raw).name, note=note, unchecked=True))
         log.info("%s: checked %d item(s) in %.0f ms, %d with private details, %d couldn't be checked",
@@ -260,16 +264,16 @@ class FileScanWorker(_Logged):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with z.open(info) as src, open(target, "wb") as dst:
                         shutil.copyfileobj(src, dst)
-                    self._zip_members[str(target).lower()] = (archive, name)
+                    self._zip_members[_pkey(target)] = (archive, name, target)
                     out.append(target)
                 if any(i.flag_bits & 0x1 for i in z.infolist()):
-                    self._zip_notes[str(archive).lower()] = "some files inside are password-protected"
+                    self._zip_notes[_pkey(archive)] = "some files inside are password-protected"
         except (zipfile.BadZipFile, OSError) as exc:
-            self._zip_notes[str(archive).lower()] = f"the ZIP couldn't be opened ({type(exc).__name__})"
+            self._zip_notes[_pkey(archive)] = f"the ZIP couldn't be opened ({type(exc).__name__})"
         return out
 
     def _display_name(self, path: Path) -> str:
-        member = self._zip_members.get(str(path).lower())
+        member = self._zip_members.get(_pkey(path))
         return f"{member[0].name} › {member[1]}" if member else path.name
 
     # ---- checking ---------------------------------------------------------------------------
@@ -277,7 +281,7 @@ class FileScanWorker(_Logged):
         from . import visual
         try:
             st = path.stat()
-            key = (str(path).lower(), st.st_size, st.st_mtime_ns)
+            key = (_pkey(path), st.st_size, st.st_mtime_ns)
         except OSError:
             key = None
         if key and key in self._cache:
@@ -368,7 +372,7 @@ class FileScanWorker(_Logged):
             img, outcome = redact.redact_image(r.image, r.extracted, chosen.get(0, []), style)
             self._own_images.add(hashlib.sha1(img.convert("RGB").tobytes()).hexdigest())
             self._quiet_until = time.monotonic() + 3
-            ok = winutil.set_clipboard_image(img)
+            ok = plat.set_clipboard_image(img)
             replaced, missed = outcome.replaced, outcome.missed
             msg = (f"Replaced {replaced} detail{'s' if replaced != 1 else ''}. The safe image is on the clipboard: "
                    "press Ctrl+V to paste it." if ok else "Couldn't put the safe image on the clipboard.")
@@ -376,14 +380,14 @@ class FileScanWorker(_Logged):
             return
 
         out_dir = self._new_out_dir()
-        by_path = {str(r.path).lower(): (i, r) for i, r in enumerate(results) if r.path is not None}
+        by_path = {_pkey(r.path): (i, r) for i, r in enumerate(results) if r.path is not None}
         outputs: List[Path] = []
         kept: List[str] = []   # files whose format can't be rewritten: handed on unchanged
         tally = [0, 0]
 
         def one(src: Path, target: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
-            hit = by_path.get(str(src).lower())
+            hit = by_path.get(_pkey(src))
             picked = chosen.get(hit[0], []) if hit else []
             if not picked:
                 shutil.copy2(src, target)  # nothing flagged/chosen in this one: unchanged
@@ -425,7 +429,7 @@ class FileScanWorker(_Logged):
             copies = "safe copy was" if len(outputs) == 1 else f"{len(outputs)} safe copies were"
             msg = (f"{what}. The {copies} selected in the upload box and submitted instead of the original." if ok else
                    f"{what}. The upload box closed, so the safe copies were put on the clipboard and opened "
-                   "in File Explorer. Upload them from there.")
+                   f"in {plat.FILE_MANAGER}. Upload them from there.")
             if not ok:
                 self._hand_over(outputs, show=True)
         elif ctx.kind == "browser":
@@ -435,7 +439,8 @@ class FileScanWorker(_Logged):
         elif ctx.kind == "opened":
             self._hand_over(outputs, show=True)
             ok = True
-            msg = f"{what}. The safe copy is open in File Explorer and on the clipboard. Share that one instead."
+            msg = (f"{what}. The safe copy is open in {plat.FILE_MANAGER} and on the clipboard. "
+                   "Share that one instead.")
         elif ctx.kind == "uploaded":
             self._hand_over(outputs, show=True)
             ok = True
@@ -445,19 +450,19 @@ class FileScanWorker(_Logged):
             self._hand_over(outputs, show=True)
             ok = True
             msg = (f"{what}. A drag can't be changed once it starts, so drop it elsewhere or press Esc. "
-                   "The safe copies are on the clipboard (Ctrl+V) and open in File Explorer to drag.")
+                   f"The safe copies are on the clipboard (Ctrl+V) and open in {plat.FILE_MANAGER} to drag.")
         else:
             ok = self._hand_over(outputs, show=False)
             msg = (f"{what}. The clipboard now holds the safe copies: press Ctrl+V to paste them." if ok else
-                   f"{what}, but the clipboard was busy. The safe copies are open in File Explorer.")
+                   f"{what}, but the clipboard was busy. The safe copies are open in {plat.FILE_MANAGER}.")
             if not ok:
                 self._hand_over(outputs, show=True)
         self._finish(ok, msg, missed)
 
     def _safe_zip(self, archive: Path, target: Path, one, kept: List[str]) -> Path:
         """Rebuild a ZIP: every member copied, the checked ones replaced by their safe copies."""
-        unpacked = {member: Path(tmp) for tmp, (arch, member) in self._zip_members.items()
-                    if str(arch).lower() == str(archive).lower()}
+        unpacked = {member: tmp for arch, member, tmp in self._zip_members.values()
+                    if _pkey(arch) == _pkey(archive)}
         scratch = target.parent / f".{target.stem}-parts"
         with zipfile.ZipFile(archive) as zin:
             if any(i.flag_bits & 0x1 for i in zin.infolist()):  # locked members can't be copied over
@@ -484,9 +489,9 @@ class FileScanWorker(_Logged):
 
     def _hand_over(self, outputs: List[Path], show: bool) -> bool:
         self._quiet_until = time.monotonic() + 3
-        ok = winutil.set_clipboard_files(outputs)
+        ok = plat.set_clipboard_files(outputs)
         if show and outputs:
-            subprocess.Popen(["explorer.exe", "/select,", str(outputs[0])])
+            plat.show_in_file_manager(outputs[0])
         return ok
 
     def _fill_dialog(self, hwnd: int, outputs: List[Path]) -> bool:
@@ -532,6 +537,8 @@ class ClipboardWatcher(_Logged):
         self.scanner, self.config, self.stop_event = scanner, config, stop_event
 
     def watch(self) -> None:
+        if not plat.IS_WIN:
+            return self._watch_linux()
         from PIL import ImageGrab
         user32 = ctypes.windll.user32
         last = user32.GetClipboardSequenceNumber()
@@ -553,6 +560,48 @@ class ClipboardWatcher(_Logged):
                 self.scanner.submit_files("Copied file", content)
             elif content is not None and hasattr(content, "size"):
                 self.scanner.submit_image("Copied image", content)
+
+    LINUX_TICK = 0.5   # looks at the clipboard's owner stamp and formats this often
+    LINUX_FULL = 2.0   # owners without a TIMESTAMP: content compared this often
+
+    @staticmethod
+    def _digest(content):
+        if content is None:
+            return None
+        kind, value = content
+        if kind == "files":
+            return kind, tuple(value)
+        return kind, hashlib.sha1(value.convert("RGB").tobytes()).hexdigest()
+
+    def _watch_linux(self) -> None:
+        """Linux has no clipboard change counter: a change shows in the owner's TIMESTAMP or
+        the list of formats; only then is the picture or the copied files' list read. What was
+        on the clipboard before SENSIQ started isn't checked (same as on Windows)."""
+        if not plat.clipboard_available():
+            log.warning("clipboard checks need xclip (Xorg/XWayland) or wl-clipboard (Wayland)")
+            return
+        last = (plat.clipboard_stamp(), tuple(plat.clipboard_targets()))
+        last_content = self._digest(plat.read_clipboard()) if last[1] else None
+        next_full = 0.0
+        while not self.stop_event.wait(self.LINUX_TICK):
+            sig = (plat.clipboard_stamp(), tuple(plat.clipboard_targets()))
+            if sig == last and (sig[0] or time.monotonic() < next_full):
+                continue
+            last = sig
+            if not sig[0]:
+                next_full = time.monotonic() + self.LINUX_FULL
+            if not sig[1] or not self.config.data.get("enabled", True) or self.scanner.clipboard_is_ours():
+                continue
+            content = plat.read_clipboard()
+            digest = self._digest(content)
+            if content is None or digest == last_content:
+                continue  # text, or the same thing still on the clipboard
+            last_content = digest
+            kind, value = content
+            if kind == "files":
+                self.scanner.submit_files("Copied file", value)
+            else:
+                self.scanner.submit_image("Copied image", value)
 
 
 # ---------------------------------------------------------------------------------------
@@ -593,7 +642,7 @@ class DragWatcher(_Logged):
         root, cls = _root_class(pt.x, pt.y)
         if cls in EXPLORER_ROOTS:
             return "explorer"
-        return winutil.process_name(winutil.window_pid(root)) if root else ""
+        return plat.process_name(plat.window_pid(root)) if root else ""
 
     def watch(self) -> None:
         import uiautomation as auto
@@ -637,7 +686,7 @@ class DragWatcher(_Logged):
     def _on_press(self, auto, x: int, y: int):
         """At mouse-down: is the cursor on a file item in Explorer or on the desktop?"""
         root, cls = _root_class(x, y)
-        if cls not in EXPLORER_ROOTS or winutil.process_name(winutil.window_pid(root)) != "explorer.exe":
+        if cls not in EXPLORER_ROOTS or plat.process_name(plat.window_pid(root)) != "explorer.exe":
             return (x, y, root, cls, None)
         name = None
         try:
@@ -908,6 +957,8 @@ class OpenedFileWatcher(_Logged):
         self.scanner, self.config, self.events, self.stop_event = scanner, config, events, stop_event
 
     def watch(self) -> None:
+        if not plat.IS_WIN:
+            return self._watch_linux()
         import comtypes
         import comtypes.client
         comtypes.CoInitialize()
@@ -932,11 +983,68 @@ class OpenedFileWatcher(_Logged):
                     continue
                 if not target.is_file() or not filescan.is_supported(target) or _is_safe_copy(target):
                     continue
-                key = str(target).lower()
+                key = _pkey(target)
                 if time.time() - offered.get(key, 0) < 600:  # don't ask twice about the same file
                     continue
                 offered[key] = time.time()
                 self.events.put(("offer_check", str(target)))
+
+    def _watch_linux(self) -> None:
+        """Linux: GTK/GNOME apps (and most others) note opened files in recently-used.xbel."""
+        since = time.time()
+        offered: Dict[str, float] = {}
+        last_mtime = 0.0
+        while not self.stop_event.wait(2.0):
+            if not (self.config.data.get("enabled", True)
+                    and self.config.data.get("file_scan", {}).get("opened_files", False)):
+                since = time.time()
+                continue
+            xbel = recent_files_list()
+            try:
+                mtime = xbel.stat().st_mtime
+            except OSError:
+                continue
+            if mtime == last_mtime:
+                continue
+            last_mtime = mtime
+            for target in recently_opened(xbel, since):
+                if not target.is_file() or not filescan.is_supported(target) or _is_safe_copy(target):
+                    continue
+                key = _pkey(target)
+                if time.time() - offered.get(key, 0) < 600:
+                    continue
+                offered[key] = time.time()
+                self.events.put(("offer_check", str(target)))
+            since = time.time()
+
+
+def recent_files_list() -> Path:
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(base) / "recently-used.xbel"
+
+
+def recently_opened(xbel: Path, since: float) -> List[Path]:
+    """Local files in a recently-used.xbel list that were opened or added after `since`."""
+    import xml.etree.ElementTree as ET
+    from datetime import datetime
+    from urllib.parse import unquote, urlparse
+    out: List[Path] = []
+    try:
+        root = ET.parse(str(xbel)).getroot()
+    except (ET.ParseError, OSError):
+        return out
+    for bm in root.iter("bookmark"):
+        stamps = []
+        for attr in ("visited", "modified", "added"):
+            v = bm.get(attr) or ""
+            try:
+                stamps.append(datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp())
+            except ValueError:
+                continue
+        u = urlparse(bm.get("href") or "")
+        if stamps and max(stamps) > since and u.scheme == "file":
+            out.append(Path(unquote(u.path)))
+    return out
 
 
 class DialogWatcher(_Logged):
@@ -984,12 +1092,12 @@ class DialogWatcher(_Logged):
                     dialog = None
                     continue
                 try:
-                    hwnd = winutil.foreground_window()
+                    hwnd = plat.foreground_window()
                     is_dialog = bool(hwnd) and self._class(hwnd) == "#32770"
-                    if is_dialog and hwnd != dialog and winutil.window_pid(hwnd) == os.getpid():
+                    if is_dialog and hwnd != dialog and plat.window_pid(hwnd) == os.getpid():
                         continue  # SENSIQ's own window (e.g. choosing the safe-copies folder)
                     if is_dialog and hwnd != dialog and \
-                            winutil.process_name(winutil.window_pid(hwnd)) in self.skip_apps():
+                            plat.process_name(plat.window_pid(hwnd)) in self.skip_apps():
                         continue  # the browser extension checks this upload when the page receives it
 
                     # the watched dialog has gone: was it Open/double-click/Enter, or Cancel?
@@ -1093,7 +1201,7 @@ class DialogWatcher(_Logged):
         if names:
             if scanner is not None:
                 scanner._quiet_until = time.monotonic() + 2  # our own brief clipboard use
-            copied = winutil.copy_selection_paths(hwnd)
+            copied = plat.copy_selection_paths(hwnd)
             if copied:  # the dialog told us exactly what is selected (folders are skipped)
                 return [p for p in copied if Path(p).is_file()][:10]
         # fallback: a name typed into the "File name" box (or the copy was refused)

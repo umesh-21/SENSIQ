@@ -3,12 +3,37 @@ work stays on the Tk thread."""
 from __future__ import annotations
 
 import logging
+import os
+import sys
 
-import pystray
-from pystray import Menu, MenuItem as Item
 
-from . import APP_NAME, winutil
-from .icon import make_icon_image
+def _linux_backend() -> None:
+    """pystray gives up if the AppIndicator library is missing instead of trying its other
+    backends, so pick one: AppIndicator (Ubuntu's top bar) > GTK status icon > plain X11."""
+    if not sys.platform.startswith("linux") or os.environ.get("PYSTRAY_BACKEND"):
+        return
+    try:
+        import gi
+        for ns in ("AyatanaAppIndicator3", "AppIndicator3"):
+            try:
+                gi.require_version(ns, "0.1")
+                os.environ["PYSTRAY_BACKEND"] = "appindicator"
+                return
+            except ValueError:
+                continue
+        gi.require_version("Gtk", "3.0")
+        os.environ["PYSTRAY_BACKEND"] = "gtk"
+    except Exception:
+        os.environ["PYSTRAY_BACKEND"] = "xorg"
+
+
+_linux_backend()
+
+import pystray  # noqa: E402
+from pystray import Menu, MenuItem as Item  # noqa: E402
+
+from . import APP_NAME, platform as plat  # noqa: E402
+from .icon import make_icon_image  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +52,13 @@ class Tray:
         try:
             from . import ocr
             return any(t.lower().startswith("hi") for t in ocr.installed_languages())
+        except Exception:
+            return True
+
+    def _typing_ready(self) -> bool:
+        try:
+            from .capture_linux import accessibility_enabled
+            return accessibility_enabled()
         except Exception:
             return True
 
@@ -49,7 +81,10 @@ class Tray:
             Item("Replace with labels like [Aadhaar]", self._post("style"),
                  checked=lambda item: self.app.config.data.get("mask_style") == "placeholder"),
             Menu.SEPARATOR,
-            Item("Start with Windows", self._post("startup"), checked=lambda item: winutil.is_startup_enabled()),
+            Item("Check a file…", self._post("check_file")),
+            Item("Typing checks: turn on (Linux, test version)…", self._post("typing_setup"),
+                 visible=lambda item: plat.IS_LINUX and not self._typing_ready()),
+            Item(plat.STARTUP_LABEL, self._post("startup"), checked=lambda item: plat.is_startup_enabled()),
             Item("Check uploads in my browser (set up)…", self._post("browser_setup")),
             Item("Safe copies folder", Menu(
                 Item("Open safe copies folder", self._post("safe_open")),
@@ -88,6 +123,8 @@ class Tray:
             log.debug("tray refresh failed", exc_info=True)
 
     def notify(self, message: str) -> None:
+        if plat.notify(message, APP_NAME):   # Linux: notify-send (AppIndicator has no balloons)
+            return
         try:
             self.icon.notify(message, APP_NAME)
         except Exception:

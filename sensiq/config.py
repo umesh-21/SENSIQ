@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -65,6 +66,11 @@ DEFAULTS = {
         "notepad.exe", "powerpnt.exe",
     ],
 }
+
+
+if sys.platform.startswith("linux"):   # the same apps' Linux program names
+    DEFAULTS["deny_processes"] += ["keepassxc", "keepass2", "keepass", "1password", "bitwarden",
+                                   "remmina", "sensiq", "gnome-keyring-daemon", "seahorse"]
 
 
 def _deep_merge(base: dict, override: dict) -> None:

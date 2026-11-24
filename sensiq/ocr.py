@@ -1,24 +1,184 @@
-"""Reads text from images with the OCR engine built into Windows 10/11
-(Windows.Media.Ocr). It runs on this computer only, needs no extra download and
-uses the OCR languages installed in Windows (Settings > Time & language > Language).
+"""Reads text from images, on this computer only.
+
+* Windows: the OCR engine built into Windows 10/11 (Windows.Media.Ocr). It needs no extra
+  download and uses the OCR languages installed in Windows (Settings > Time & language > Language).
+* Linux: Tesseract (`apt install tesseract-ocr tesseract-ocr-hin`), run as a separate program
+  per reading; the image is piped in and never written to disk.
+
+Both engines return the same thing (lines of words with boxes), so slicing of tall images,
+retries on hard photos, extra variants for ID cards and the extra-language pass are shared.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import shutil
+import subprocess
+import sys
 import threading
 from typing import List, Optional, Tuple
 
 log = logging.getLogger(__name__)
+
+IS_WIN = sys.platform == "win32"
+ENGINE_NAME = "Windows OCR" if IS_WIN else "Tesseract OCR"
 
 _lock = threading.Lock()
 _engine = None
 _error: Optional[str] = None
 
 
+class _WinEngine:
+    """Windows.Media.Ocr engine for one language."""
+    parallel = False
+
+    def __init__(self, engine):
+        self.engine = engine
+        self.tag = engine.recognizer_language.language_tag
+
+    def prepare(self, image):
+        """RGBA image sized for the OCR engine: small text is upscaled, huge images shrunk."""
+        from PIL import Image
+        from winrt.windows.media.ocr import OcrEngine
+
+        img = image.convert("RGBA")
+        w, h = img.size
+        limit = int(OcrEngine.max_image_dimension)
+        scale = 1.0
+        if max(w, h) < 1200:
+            scale = min(2.5, 1600 / max(w, h, 1))
+        if max(w, h) * scale > limit:
+            scale = limit / max(w, h)
+        if abs(scale - 1.0) > 0.05:
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+        return img
+
+    def read(self, img):
+        return asyncio.run(_recognize(self.engine, img))
+
+
+# ---- Tesseract (Linux) ------------------------------------------------------------------
+TESS_LANGS = {"en": "eng", "hi": "hin", "mr": "mar", "bn": "ben", "ta": "tam", "te": "tel", "gu": "guj",
+              "kn": "kan", "ml": "mal", "pa": "pan", "ur": "urd", "or": "ori", "as": "asm", "ne": "nep"}
+TESS_MAX = 6000      # longest side handed to Tesseract (slices keep tall pages sharp)
+TESS_MIN_CONF = 10   # words Tesseract is less sure of are dropped (stray marks, ink, backgrounds)
+
+
+def tesseract_path() -> Optional[str]:
+    exe = os.environ.get("SENSIQ_TESSERACT") or shutil.which("tesseract")
+    return exe if exe and os.path.exists(exe) else None
+
+
+def _tess_env() -> dict:
+    from .platform import child_env   # the installed app's own libraries stay out of Tesseract
+    env = child_env()
+    env["OMP_THREAD_LIMIT"] = "1"      # one thread per reading: SENSIQ runs a few readings at once
+    return env
+
+
+def _tess_languages() -> List[str]:
+    exe = tesseract_path()
+    if not exe:
+        return []
+    try:
+        r = subprocess.run([exe, "--list-langs"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=15, env=_tess_env())
+    except Exception:
+        return []
+    lines = r.stdout.decode("utf-8", "replace").splitlines()
+    return [l.strip() for l in lines[1:] if l.strip() and " " not in l.strip() and l.strip() != "osd"]
+
+
+class Word(str):
+    """A word Tesseract read, with its confidence (0-100) as .conf."""
+    conf: float = -1.0
+
+
+def _word(text: str, conf: float) -> Word:
+    w = Word(text)
+    w.conf = conf
+    return w
+
+
+def parse_tsv(tsv: str):
+    """Tesseract TSV -> lines of (word, (left, top, right, bottom)) in reading order."""
+    lines: dict = {}
+    order: list = []
+    for row in tsv.splitlines()[1:]:
+        cols = row.split("\t")
+        if len(cols) < 12 or cols[0] != "5":
+            continue
+        text = cols[11].strip()
+        try:
+            conf = float(cols[10])
+            l, t, w, h = (int(cols[i]) for i in (6, 7, 8, 9))
+        except ValueError:
+            continue
+        if not text or conf < TESS_MIN_CONF:
+            continue
+        key = (cols[1], cols[2], cols[3], cols[4])  # page, block, paragraph, line
+        if key not in lines:
+            lines[key] = []
+            order.append(key)
+        lines[key].append((_word(text, conf), (float(l), float(t), float(l + w), float(h + t))))
+    return [lines[k] for k in order]
+
+
+class _TessEngine:
+    """Tesseract for one language (e.g. "eng", "hin"); psm 3 = whole page, 11 = scattered text."""
+    parallel = True
+
+    def __init__(self, lang: str = "eng", psm: int = 3):
+        self.lang, self.psm = lang, psm
+        self.tag = lang
+
+    def sparse(self) -> "_TessEngine":
+        return _TessEngine(self.lang, psm=11)
+
+    def prepare(self, image):
+        """Grey copy at a size Tesseract reads well (small text enlarged, like a 300-dpi scan)."""
+        from PIL import Image, ImageOps
+        img = ImageOps.grayscale(image.convert("RGB"))
+        w, h = img.size
+        scale = 1.0
+        if max(w, h) < 1600:
+            scale = min(3.0, 2000 / max(w, h, 1))
+        if max(w, h) * scale > TESS_MAX:
+            scale = TESS_MAX / max(w, h)
+        if abs(scale - 1.0) > 0.05:
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+        return img
+
+    def read(self, img):
+        import io
+        exe = tesseract_path()
+        if not exe:
+            raise RuntimeError("Tesseract isn't installed")
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        r = subprocess.run([exe, "stdin", "stdout", "-l", self.lang, "--psm", str(self.psm), "tsv"],
+                           input=buf.getvalue(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           timeout=180, env=_tess_env())
+        if r.returncode != 0:
+            raise RuntimeError(f"Tesseract failed ({r.stderr.decode('utf-8', 'replace').strip()[-200:]})")
+        return parse_tsv(r.stdout.decode("utf-8", "replace"))
+
+
 def _get_engine():
     global _engine, _error
     if _engine is not None or _error is not None:
+        return _engine
+    if not IS_WIN:
+        if not tesseract_path():
+            _error = "Tesseract isn't installed (sudo apt install tesseract-ocr)"
+        elif "eng" not in _tess_languages():
+            _error = "Tesseract has no English data (sudo apt install tesseract-ocr-eng)"
+        else:
+            _engine = _TessEngine("eng")
+            log.info("Tesseract OCR ready (%s)", tesseract_path())
+        if _error:
+            log.warning("OCR unavailable: %s", _error)
         return _engine
     try:
         from winrt.windows.media.ocr import OcrEngine
@@ -28,8 +188,8 @@ def _get_engine():
             engine = OcrEngine.try_create_from_language(Language("en-US"))
         if engine is None:
             raise RuntimeError("no OCR language is installed in Windows")
-        _engine = engine
-        log.info("Windows OCR ready (%s)", engine.recognizer_language.language_tag)
+        _engine = _WinEngine(engine)
+        log.info("Windows OCR ready (%s)", _engine.tag)
     except Exception as exc:
         _error = f"{type(exc).__name__}: {exc}"
         log.warning("Windows OCR unavailable: %s", _error)
@@ -64,9 +224,17 @@ def _get_extra_engines() -> list:
     main = _get_engine()
     if main is None:
         return _extra_engines
+    if not IS_WIN:
+        have = set(_tess_languages())
+        for code in _wanted_languages:
+            tess = TESS_LANGS.get(code, code)
+            if tess != main.lang and tess in have and all(e.lang != tess for e in _extra_engines):
+                _extra_engines.append(_TessEngine(tess))
+                log.info("Tesseract also reads %s", tess)
+        return _extra_engines
     try:
         from winrt.windows.media.ocr import OcrEngine
-        main_prefix = main.recognizer_language.language_tag.split("-")[0].lower()
+        main_prefix = main.tag.split("-")[0].lower()
         seen = {main_prefix}
         for lang in OcrEngine.available_recognizer_languages:
             prefix = lang.language_tag.split("-")[0].lower()
@@ -74,7 +242,7 @@ def _get_extra_engines() -> list:
                 continue
             engine = OcrEngine.try_create_from_language(lang)
             if engine is not None:
-                _extra_engines.append(engine)
+                _extra_engines.append(_WinEngine(engine))
                 seen.add(prefix)
                 log.info("Windows OCR also reads %s", lang.language_tag)
     except Exception:
@@ -83,6 +251,9 @@ def _get_extra_engines() -> list:
 
 
 def installed_languages() -> List[str]:
+    """Windows: language tags ("en-US", "hi-IN"); Linux: Tesseract codes ("eng", "hin")."""
+    if not IS_WIN:
+        return _tess_languages()
     try:
         from winrt.windows.media.ocr import OcrEngine
         return [l.language_tag for l in OcrEngine.available_recognizer_languages]
@@ -95,26 +266,8 @@ def status() -> dict:
         engine = _get_engine()
         extra = _get_extra_engines()
     return {"ocr_loaded": engine is not None, "ocr_error": _error,
-            "ocr_language": engine.recognizer_language.language_tag if engine is not None else None,
-            "ocr_extra_languages": [e.recognizer_language.language_tag for e in extra]}
-
-
-def _prepare(image):
-    """RGBA image sized for the OCR engine: small text is upscaled, huge images shrunk."""
-    from PIL import Image
-    from winrt.windows.media.ocr import OcrEngine
-
-    img = image.convert("RGBA")
-    w, h = img.size
-    limit = int(OcrEngine.max_image_dimension)
-    scale = 1.0
-    if max(w, h) < 1200:
-        scale = min(2.5, 1600 / max(w, h, 1))
-    if max(w, h) * scale > limit:
-        scale = limit / max(w, h)
-    if abs(scale - 1.0) > 0.05:
-        img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
-    return img
+            "ocr_language": engine.tag if engine is not None else None,
+            "ocr_extra_languages": [e.tag for e in extra]}
 
 
 Box = Tuple[float, float, float, float]  # left, top, right, bottom in the original image's pixels
@@ -145,8 +298,8 @@ OVERLAP = 160    # ...overlapping by this much so no line is cut in half
 
 def _lines_scaled(engine, image, oy: float = 0.0):
     """OCR one image (or slice); word boxes in the original image's pixels, shifted down by oy."""
-    img = _prepare(image)
-    lines = asyncio.run(_recognize(engine, img))
+    img = engine.prepare(image)
+    lines = engine.read(img)
     sx, sy = image.width / img.width, image.height / img.height
     return [[(t, (l * sx, tp * sy + oy, r * sx, b * sy + oy)) for t, (l, tp, r, b) in line] for line in lines]
 
@@ -218,7 +371,7 @@ def _best_lines(engine, image):
     """Read the image; if it gives (almost) nothing, try a cleaned-up copy and turned copies."""
     from PIL import Image
     lines = _read_lines(engine, image)
-    if _amount(lines) >= RETRY_BELOW or _blank(image):
+    if _good(lines, RETRY_BELOW) or _blank(image):
         return lines
     best = lines
     clean = _enhanced(image)
@@ -229,14 +382,29 @@ def _best_lines(engine, image):
     candidates = [scaled(_read_lines(engine, clean))]
     for turn, op in ((90, Image.Transpose.ROTATE_90), (270, Image.Transpose.ROTATE_270),
                      (180, Image.Transpose.ROTATE_180)):
-        if _amount(max(candidates + [best], key=_amount)) >= RETRY_BELOW * 2:
+        if _good(max(candidates + [best], key=_score), RETRY_BELOW * 2):
             break
         turned = clean.transpose(op)
         candidates.append(scaled(_unrotate(_read_lines(engine, turned), turn, clean.width, clean.height)))
     for c in candidates:
-        if _amount(c) > _amount(best):
+        if _score(c) > _score(best):
             best = c
     return best
+
+
+SURE = 60   # Tesseract: mean word confidence of a reading that needs no second try
+
+
+def _score(lines) -> float:
+    """How much was read. With word confidences (Tesseract), junk read from sideways or
+    blurred text counts for little; Windows OCR returns nothing there, so letters count."""
+    conf = _mean_conf([w for line in lines for w in line])
+    return _amount(lines) if conf is None else _amount(lines) * conf / 100.0
+
+
+def _good(lines, need: int) -> bool:
+    conf = _mean_conf([w for line in lines for w in line])
+    return _amount(lines) >= need and (conf is None or conf >= SURE)
 
 
 THOROUGH_MAX = 2000  # single images up to this size are also read as a few extra variants
@@ -269,26 +437,87 @@ def _merge_lines(lines, extra):
     return lines
 
 
-def _variants(engine, image):
-    """Windows OCR misses different words on busy backgrounds (ID cards, phone photos)
-    depending on scale and framing: read a 2x grey copy and overlapping halves as well."""
+def _variant_jobs(engine, image) -> list:
+    """OCR misses different words on busy backgrounds (ID cards, phone photos) depending on
+    scale and framing: read a 2x grey copy and overlapping halves as well (and, with Tesseract,
+    a "scattered text" reading that finds words outside the main text blocks)."""
     from PIL import Image, ImageOps
-    out = []
+    jobs = []
     w, h = image.size
     g = ImageOps.autocontrast(image.convert("L"), cutoff=2)
     k = min(2.0, 2400 / max(w, h, 1))
     if k > 1.2:
         big = g.resize((int(w * k), int(h * k)), Image.LANCZOS).convert("RGB")
-        out.append([[(t, (l / k, tp / k, r / k, b / k)) for t, (l, tp, r, b) in line]
-                    for line in _read_lines(engine, big)])
+        jobs.append(lambda: [[(t, (l / k, tp / k, r / k, b / k)) for t, (l, tp, r, b) in line]
+                             for line in _read_lines(engine, big)])
     if h >= w * 0.8:   # tall: top and bottom halves
         cuts = [(0, 0, w, int(h * 0.55)), (0, int(h * 0.45), w, h)]
     else:              # wide: left and right halves
         cuts = [(0, 0, int(w * 0.55), h), (int(w * 0.45), 0, w, h)]
-    for l0, t0, r0, b0 in cuts:
+
+    def half(l0, t0, r0, b0):
         part = _read_lines(engine, image.crop((l0, t0, r0, b0)))
-        out.append([[(t, (l + l0, tp + t0, r + l0, b + t0)) for t, (l, tp, r, b) in line] for line in part])
-    return out
+        return [[(t, (l + l0, tp + t0, r + l0, b + t0)) for t, (l, tp, r, b) in line] for line in part]
+    for cut in cuts:
+        jobs.append(lambda c=cut: half(*c))
+    if hasattr(engine, "sparse"):
+        jobs.append(lambda: _read_lines(engine.sparse(), image))
+    return jobs
+
+
+def _run_all(engine, jobs: list) -> list:
+    """Run readings one by one (Windows OCR), or side by side (Tesseract runs as separate
+    processes, so a 4-core PC reads a card's variants in about the time of one)."""
+    if getattr(engine, "parallel", False) and len(jobs) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(4, len(jobs)), thread_name_prefix="ocr") as ex:
+            return list(ex.map(lambda f: f(), jobs))
+    return [f() for f in jobs]
+
+
+def _variants(engine, image):
+    return _run_all(engine, _variant_jobs(engine, image))
+
+
+def _extra_lines(extra, image) -> list:
+    """Lines an extra language reads that the main one can't (e.g. Devanagari)."""
+    try:
+        return [line for line in _read_lines(extra, image) if any(not t.isascii() for t, _ in line)]
+    except Exception:
+        log.debug("extra-language OCR failed", exc_info=True)
+        return []
+
+
+EXTRA_MARGIN = 8   # an extra-language line must be this much surer than the English words under it
+
+
+def _mean_conf(words) -> Optional[float]:
+    confs = [getattr(t, "conf", None) for t, _ in words]
+    confs = [c for c in confs if c is not None and c >= 0]
+    return sum(confs) / len(confs) if confs else None
+
+
+def _add_extra(lines, extra_lines):
+    """Add extra-language lines. Engines without word confidence (Windows OCR) add every one,
+    as before. With Tesseract, a Hindi model also "reads" English text as Devanagari junk,
+    so where both read the same spot the surer reading wins (and the other one is dropped)."""
+    for line in extra_lines:
+        extra_conf = _mean_conf(line)
+        if extra_conf is None:
+            lines.append(line)
+            continue
+        under = [(i, j) for i, old in enumerate(lines) for j, (_, ob) in enumerate(old)
+                 if any(_overlap(ob, b) > 0.3 or _overlap(b, ob) > 0.3 for _, b in line)]
+        if under:
+            main_conf = _mean_conf([lines[i][j] for i, j in under]) or 0.0
+            if extra_conf < main_conf + EXTRA_MARGIN:
+                continue
+            drop = set(under)
+            for i in range(len(lines)):
+                lines[i] = [w for j, w in enumerate(lines[i]) if (i, j) not in drop]
+            lines[:] = [l for l in lines if l]
+        lines.append(line)
+    return lines
 
 
 def recognize(image, thorough: bool = False) -> Tuple[str, List[Tuple[int, int, Box]]]:
@@ -305,16 +534,16 @@ def recognize(image, thorough: bool = False) -> Tuple[str, List[Tuple[int, int, 
         if engine is None:
             raise RuntimeError(f"OCR unavailable: {_error}")
         lines = _best_lines(engine, image)
+        jobs = []
         if thorough and max(image.size) <= THOROUGH_MAX and not _blank(image):
-            for extra_lines in _variants(engine, image):
-                lines = _merge_lines(lines, extra_lines)
-        for extra in _get_extra_engines():
-            try:
-                for line in _read_lines(extra, image):
-                    if any(not t.isascii() for t, _ in line):  # e.g. Devanagari lines English can't read
-                        lines.append(line)
-            except Exception:
-                log.debug("extra-language OCR failed", exc_info=True)
+            jobs = _variant_jobs(engine, image)
+        n_variants = len(jobs)
+        jobs += [lambda e=extra: _extra_lines(e, image) for extra in _get_extra_engines()]
+        results = _run_all(engine, jobs)
+        for extra_lines in results[:n_variants]:
+            lines = _merge_lines(lines, extra_lines)
+        for extra in results[n_variants:]:
+            lines = _add_extra(lines, extra)
     parts: List[str] = []
     words: List[Tuple[int, int, Box]] = []
     pos = 0

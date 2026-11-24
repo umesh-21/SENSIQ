@@ -30,6 +30,21 @@ EXPECTED_RULE_KINDS = {
 }
 
 
+def _linux_desktop_report() -> str:
+    """Which Linux helpers are there (informational; files are checked without them)."""
+    import shutil
+    from . import platform as plat
+    have = []
+    for tool in ("xclip", "wl-paste", "notify-send", "pkexec"):
+        have.append(f"{tool} {'yes' if shutil.which(tool) else 'missing'}")
+    try:
+        from .capture_linux import accessibility_enabled
+        have.append("typing checks " + ("on" if accessibility_enabled() else "off"))
+    except Exception:
+        have.append("typing checks unavailable")
+    return f"{plat.session_type() or 'no display'} session; " + ", ".join(have)
+
+
 def run_selftest(report_path: Optional[Path] = None, use_ner: bool = True) -> Tuple[bool, str]:
     from .detector.engine import DetectionEngine
 
@@ -83,21 +98,26 @@ def run_selftest(report_path: Optional[Path] = None, use_ner: bool = True) -> Tu
         from PIL import Image, ImageDraw, ImageFont
         from . import ocr
         img = Image.new("RGB", (600, 120), "white")
-        try:
-            font = ImageFont.truetype("arial.ttf", 28)
-        except OSError:
-            font = ImageFont.load_default()
+        font = None
+        for name in ("arial.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "DejaVuSans.ttf"):
+            try:
+                font = ImageFont.truetype(name, 28)
+                break
+            except OSError:
+                continue
+        font = font or ImageFont.load_default()
         ImageDraw.Draw(img).text((20, 40), "Aadhaar 4918 3205 7615", fill="black", font=font)
         t3 = time.perf_counter()
         text = ocr.image_to_text(img)
         ocr_ms = (time.perf_counter() - t3) * 1000
         img_kinds = {f.kind for f in engine.detect(text)}
         ocr_ok = "AADHAAR" in img_kinds
-        lines.append(f"Image check (Windows OCR, {ocr.status()['ocr_language']}): "
+        lines.append(f"Image check ({ocr.ENGINE_NAME}, {ocr.status()['ocr_language']}): "
                      + (f"found the Aadhaar number in {ocr_ms:.0f} ms" if ocr_ok else f"FAILED, read {text!r}"))
     except Exception as exc:
         ocr_ok = False
-        lines.append(f"Image check (Windows OCR): NOT available - {exc}")
+        lines.append(f"Image check (OCR): NOT available - {exc}")
     ok = ok and ocr_ok
 
     # QR codes, faces, extra OCR languages -------------------------------------------------
@@ -116,6 +136,8 @@ def run_selftest(report_path: Optional[Path] = None, use_ner: bool = True) -> Tu
         extra = ocr_status().get("ocr_extra_languages") or []
         lines.append("Extra OCR languages: " + (", ".join(extra) if extra else
                                                  "none (tray menu: 'Read Hindi in images' to add Hindi)"))
+        if sys.platform.startswith("linux"):
+            lines.append("Desktop: " + _linux_desktop_report())
     except Exception as exc:
         lines.append(f"Face detector: NOT available - {exc}")
         ok = False

@@ -36,9 +36,14 @@ def _fake_github(monkeypatch, setup_bytes: bytes, sha: str, version="v9.0.0", wi
         "assets": [{"name": f"SENSIQ-Setup-{version[1:]}.exe", "size": len(setup_bytes),
                     "browser_download_url": "https://dl/setup.exe"}],
     }
+    # the Linux package is published next to the Windows setup; each system picks its own
+    release["assets"].append({"name": f"sensiq_{version[1:]}_amd64.deb", "size": len(setup_bytes),
+                              "browser_download_url": "https://dl/sensiq.deb"})
     if with_sha:
         release["assets"].append({"name": f"SENSIQ-Setup-{version[1:]}.exe.sha256", "size": 80,
                                   "browser_download_url": "https://dl/setup.sha256"})
+        release["assets"].append({"name": f"sensiq_{version[1:]}_amd64.deb.sha256", "size": 80,
+                                  "browser_download_url": "https://dl/sensiq.deb.sha256"})
 
     def fake_get(url, timeout=15):
         if url.startswith("https://api.github.com/"):
@@ -78,7 +83,7 @@ def test_tampered_download_is_rejected(monkeypatch, tmp_path):
     info = updater.check("o/SENSIQ")
     with pytest.raises(RuntimeError, match="checksum"):
         updater.download(info)
-    assert not list(tmp_path.glob("SENSIQ-Setup-*.exe"))
+    assert not list(tmp_path.glob("SENSIQ-Setup-*.exe")) and not list(tmp_path.glob("sensiq_*.deb"))
 
 
 def test_release_without_checksum_is_not_installed(monkeypatch, tmp_path):

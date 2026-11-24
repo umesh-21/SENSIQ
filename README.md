@@ -9,6 +9,7 @@
 [![Latest release](https://img.shields.io/github/v/release/umesh-21/SENSIQ?label=download)](https://github.com/umesh-21/SENSIQ/releases/latest)
 [![Build](https://github.com/umesh-21/SENSIQ/actions/workflows/release.yml/badge.svg)](https://github.com/umesh-21/SENSIQ/actions/workflows/release.yml)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
+![Ubuntu 22.04/24.04](https://img.shields.io/badge/Ubuntu-22.04%20%7C%2024.04-E95420)
 ![Runs offline](https://img.shields.io/badge/AI-on%20your%20PC-0E7C7B)
 
 </div>
@@ -24,7 +25,7 @@
 
 ---
 
-**On-device privacy guard for Windows 10/11** (called *PII Guard* up to version 1.3.0). It stops Aadhaar numbers, PAN, phone numbers, names, addresses, ID-card photos and QR codes from leaving your PC by accident, in what you type and in the images, PDFs and documents you upload, paste or drag.
+**On-device privacy guard for Windows 10/11 and Ubuntu Linux 22.04/24.04** (called *PII Guard* up to version 1.3.0). It stops Aadhaar numbers, PAN, phone numbers, names, addresses, ID-card photos and QR codes from leaving your PC by accident, in what you type and in the images, PDFs and documents you upload, paste or drag.
 
 ## Download and install
 
@@ -35,6 +36,16 @@
 5. Optional, to check uploads on websites: tray → **Check uploads in my browser (set up)…** (see [Browser uploads](#browser-uploads-extension)).
 
 Requirements: Windows 10 or 11, 64-bit.
+
+### Linux (Ubuntu 22.04 / 24.04)
+
+1. Download `sensiq_x.y.z_amd64.deb` from the same release page (releases from the first Linux version on).
+2. Install it: `sudo apt install ./sensiq_x.y.z_amd64.deb`. This also installs Tesseract (the OCR program, English and Hindi), the tray-icon library and the clipboard tool.
+3. Start **SENSIQ** from the app list. The shield appears in the top bar; click it for all options.
+4. To check a file before you share it: in **Files**, right-click it → **Scripts → Check with SENSIQ**, or use the shield → **Check a file…**. Copied images and files are checked by themselves, and uploads in Chrome, Edge or Brave with the [extension](#browser-uploads-extension).
+5. Optional, typing warnings (test version): shield → **Typing checks: turn on…**, then sign out and back in.
+
+On Linux, files picked in a website's upload window or dragged out of Files can't be noticed by any app (Linux doesn't allow it), so use the extension or the right-click check. Updates work the same way: nothing is installed until you click **Update now**, and then Ubuntu asks for your password.
 
 ## Updates
 
@@ -173,12 +184,25 @@ The build is the only step that needs the internet. For a quick run from source 
 
 To use a different token-classification model, pass any Hugging Face repo that has an ONNX export: `build.ps1 -Model "<repo>"`.
 
+### Linux
+
+On Ubuntu 22.04 (the package then also runs on 24.04):
+
+```
+sudo apt install python3-venv python3-dev python3-tk python3-gi gir1.2-gtk-3.0 \
+  gir1.2-ayatanaappindicator3-0.1 gir1.2-atspi-2.0 tesseract-ocr tesseract-ocr-eng \
+  tesseract-ocr-hin xvfb xclip libnotify-bin
+./build_linux.sh
+```
+
+It does the same steps as `build.ps1` and makes `dist/sensiq_<version>_amd64.deb` (+ `.sha256`). Run from source: `.venv/bin/python -m sensiq --debug`; tests: `xvfb-run -a .venv/bin/python -m pytest -q tests`.
+
 ## Publishing a new version (maintainers)
 
 1. Make your changes and run the tests: `.venv\Scripts\python.exe -m pytest -q tests`.
 2. Add a section at the top of [CHANGELOG.md](CHANGELOG.md), for example `## [1.3.0]`, listing what's new in plain words. This text becomes the release notes and the **What's new** box users see in the app.
 3. Run `powershell -ExecutionPolicy Bypass -File tools\release.ps1 -Version 1.3.0`. It sets the version in every file (`tools/set_version.py`), commits, tags `v1.3.0` and pushes.
-4. GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml)) builds the app on Windows, creates the setup file and its `.sha256`, and publishes the release with the CHANGELOG notes. That takes about 20 minutes; follow it on the **Actions** tab.
+4. GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml)) builds the app on Windows, creates the setup file and its `.sha256`, and publishes the release with the CHANGELOG notes. A Linux job builds the `.deb` on Ubuntu 22.04, tests installing it on 22.04 and 24.04, and adds it (and its `.sha256`) to the same release. That takes about 20 minutes; follow it on the **Actions** tab.
 5. Within 12 hours every installed copy shows the update card (or right away with tray → Check for updates now).
 
 Pushing commits without a new tag doesn't release anything. Users only get versions that were tagged and built.
@@ -267,13 +291,15 @@ Tray menu → Open settings file (`%APPDATA%\SENSIQ\settings.json`), then Reload
 - The bundled model is trained on English news text, so it finds English and most Indian names written in Latin script. It doesn't find names written in Devanagari or other scripts. A multilingual NER model can be swapped in with `build.ps1 -Model`.
 - Pattern rules focus on Indian and common international formats. Add more in `sensiq/detector/rules.py`.
 - "Replace all" in rich editors replaces items one at a time from the end of the text, which takes about a second.
+- **Linux:** upload windows and drags can't be watched (see above). Typing checks are a test version: they need accessibility switched on and work in apps that share their text boxes (GTK/GNOME apps, LibreOffice, Firefox, Chrome); on Wayland the badge sits in the bottom-right corner instead of next to the text box. Chromium from the Snap Store can't talk to the SENSIQ app; use Chrome, Brave or Edge from their own `.deb`.
 
 ## Project layout
 
 ```
 sensiq/
   app.py           main program, event loop, tray actions, CLI
-  capture.py       UI Automation: read focused field, write replacements
+  capture.py       UI Automation: read focused field, write replacements (Windows)
+  capture_linux.py AT-SPI: the same on Linux (test version)
   overlay.py       badge, panel and alerts (Tk)
   worker.py        debounced background detection
   detector/
@@ -285,24 +311,28 @@ sensiq/
   sharewatch.py    clipboard, drag-and-drop and file-dialog watchers + file scanner
   filescan.py      text from images, PDFs, Office and text files (with word positions)
   redact.py        safe copies: boxes on images/PDF pages, masked text in documents
-  ocr.py           Windows built-in OCR
+  ocr.py           OCR: Windows built-in OCR / Tesseract on Linux
   masking.py       replacement text
   config.py        settings and ignore list
   updater.py       update check, verified download and install from GitHub Releases
   browserlink.py, nativehost.py   link to the browser extension
   visual.py        QR codes, faces, signatures in pictures
   selftest.py      offline end-to-end check
-  tray.py, icon.py, winutil.py
+  platform/        windows.py, linux.py: clipboard, start-up, notifications, opening files
+  control.py       a second start (`--check FILE`) hands files to the running app
+  linuxdesktop.py  Files right-click script "Check with SENSIQ" (Linux)
+  tray.py, icon.py, winutil.py (old name of platform/windows.py)
 browser_extension/ Chrome/Edge/Brave extension (Manifest V3)
 tools/             model download, icon, set_version.py, release.ps1
 .github/workflows/ release.yml: builds and publishes a release for each version tag
 CHANGELOG.md       what's new in each version (shown in the update card)
 demo/demo.html     offline test page
 tests/             unit tests (pytest)
-build.ps1 / build.bat / installer.iss
+build.ps1 / build.bat / installer.iss    Windows build
+build_linux.sh / packaging/linux/        Linux build (.deb)
 ```
 
-Command-line options: `SENSIQ.exe --selftest`, `--no-ner` (patterns only), `--no-tray`, `--debug`.
+Command-line options: `SENSIQ.exe --selftest`, `--no-ner` (patterns only), `--no-tray`, `--debug`, `--check FILE…` (check files; hands them to SENSIQ if it's already running). On Linux the program is `sensiq`.
 
 ## Licences
 

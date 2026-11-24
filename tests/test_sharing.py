@@ -3,6 +3,8 @@ Every value is fake."""
 import zipfile
 from pathlib import Path
 
+import sys
+
 import pytest
 
 from sensiq import filescan
@@ -158,6 +160,7 @@ def test_dialog_folder_display_names(tmp_path, monkeypatch):
     assert sharewatch._dialog_folder("Address: This PC") is None
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
 def test_real_known_folders():
     from sensiq import sharewatch
     downloads = sharewatch._dialog_folder("Address: Downloads")

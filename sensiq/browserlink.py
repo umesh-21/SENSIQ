@@ -1,8 +1,10 @@
 """Link between the SENSIQ browser extension and this app.
 
 * register_host(): tells Chrome, Edge, Brave and Chromium (current user only, no admin) where
-  the native-messaging host is, so the extension can reach this app.
-* BrowserLink: a thread that accepts connections from the host over a private named pipe,
+  the native-messaging host is, so the extension can reach this app (Windows: HKCU registry;
+  Linux: a manifest in each browser's ~/.config/<browser>/NativeMessagingHosts folder).
+* BrowserLink: a thread that accepts connections from the host over a private named pipe
+  (Windows) or Unix socket (Linux),
   collects the files a page is about to receive, has the scanner check them and sends back
   the page's answer: the original, the safe copy, or nothing (cancelled).
 """
@@ -12,6 +14,7 @@ import base64
 import hashlib
 import json
 import logging
+import os
 import shutil
 import sys
 import threading
@@ -19,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Dict, Set
 
-from .nativehost import link_key, pipe_address
+from .nativehost import FAMILY, IS_WIN, link_key, pipe_address
 from .paths import data_dir, resource_dir, work_dir
 
 log = logging.getLogger(__name__)
@@ -32,6 +35,10 @@ BROWSER_KEYS = [
     r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
     r"Software\Chromium\NativeMessagingHosts",
 ]
+LINUX_BROWSER_DIRS = [  # ~/.config/<this>/NativeMessagingHosts
+    "google-chrome", "google-chrome-beta", "chromium", "BraveSoftware/Brave-Browser",
+    "microsoft-edge", "vivaldi",
+]
 CHUNK_TO_BROWSER = 600 * 1024   # bytes per reply chunk (stays under the browser's 1 MB limit once base64'd)
 
 
@@ -43,6 +50,14 @@ def _host_command() -> Path:
     """What the browser runs: the app itself when installed, a small launcher when run from source."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable)
+    if not IS_WIN:
+        import shlex
+        launcher = data_dir() / "native-host.sh"
+        root = Path(__file__).resolve().parent.parent
+        launcher.write_text(f'#!/bin/sh\nPYTHONPATH={shlex.quote(str(root))} exec {shlex.quote(sys.executable)} '
+                            '-m sensiq "$@"\n', encoding="utf-8")
+        launcher.chmod(0o755)
+        return launcher
     launcher = data_dir() / "native-host.bat"
     py = Path(sys.executable)
     root = Path(__file__).resolve().parent.parent
@@ -50,18 +65,38 @@ def _host_command() -> Path:
     return launcher
 
 
+def _manifest() -> str:
+    return json.dumps({
+        "name": HOST_NAME,
+        "description": "SENSIQ - checks files you upload for personal details",
+        "path": str(_host_command()),
+        "type": "stdio",
+        "allowed_origins": [f"chrome-extension://{EXTENSION_ID}/"],
+    }, indent=2)
+
+
+def _linux_host_dirs(existing_only: bool = True) -> list:
+    base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return [base / d / "NativeMessagingHosts" for d in LINUX_BROWSER_DIRS
+            if not existing_only or (base / d).is_dir()]
+
+
 def register_host() -> bool:
-    """Native-messaging registration for the current user (HKCU). Safe to repeat."""
+    """Native-messaging registration for the current user (HKCU / ~/.config). Safe to repeat."""
+    if not IS_WIN:
+        try:
+            text = _manifest()
+            for d in _linux_host_dirs():
+                d.mkdir(parents=True, exist_ok=True)
+                (d / f"{HOST_NAME}.json").write_text(text, encoding="utf-8")
+            return True
+        except Exception:
+            log.exception("couldn't register the browser link")
+            return False
     try:
         import winreg
         manifest = data_dir() / "native-host.json"
-        manifest.write_text(json.dumps({
-            "name": HOST_NAME,
-            "description": "SENSIQ - checks files you upload for personal details",
-            "path": str(_host_command()),
-            "type": "stdio",
-            "allowed_origins": [f"chrome-extension://{EXTENSION_ID}/"],
-        }, indent=2), encoding="utf-8")
+        manifest.write_text(_manifest(), encoding="utf-8")
         for key in BROWSER_KEYS:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{key}\{HOST_NAME}") as k:
                 winreg.SetValueEx(k, "", 0, winreg.REG_SZ, str(manifest))
@@ -72,6 +107,13 @@ def register_host() -> bool:
 
 
 def unregister_host() -> None:
+    if not IS_WIN:
+        for d in _linux_host_dirs(existing_only=False):
+            try:
+                (d / f"{HOST_NAME}.json").unlink()
+            except OSError:
+                pass
+        return
     import winreg
     for key in BROWSER_KEYS:
         try:
@@ -127,7 +169,14 @@ class BrowserLink(threading.Thread):
         from multiprocessing.connection import Listener
         register_host()
         try:
-            listener = Listener(pipe_address(), family="AF_PIPE", authkey=link_key(create=True))
+            if not IS_WIN:  # a socket left by a crash (we hold the single-instance lock)
+                try:
+                    os.unlink(pipe_address())
+                except FileNotFoundError:
+                    pass
+            listener = Listener(pipe_address(), family=FAMILY, authkey=link_key(create=True))
+            if not IS_WIN:
+                os.chmod(pipe_address(), 0o600)
         except Exception:
             log.exception("browser link unavailable")
             return

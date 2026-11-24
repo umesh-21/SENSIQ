@@ -1,9 +1,10 @@
 """Native-messaging host for the SENSIQ browser extension.
 
-The browser starts `SENSIQ.exe chrome-extension://<id>/` with stdin/stdout connected to the
-extension. This process only relays: browser messages go to the running SENSIQ app over a
-private named pipe (per Windows user, protected by a random key in %APPDATA%), and the app's
-answers go back to the browser. It never reads files or goes online itself.
+The browser starts `SENSIQ.exe chrome-extension://<id>/` (Linux: `/opt/sensiq/sensiq ...`) with
+stdin/stdout connected to the extension. This process only relays: browser messages go to the
+running SENSIQ app over a private named pipe (Windows, per user) or Unix socket (Linux,
+$XDG_RUNTIME_DIR/sensiq/link.sock, 0600), protected by a random key in the settings folder, and
+the app's answers go back to the browser. It never reads files or goes online itself.
 
 Message framing (Chrome/Edge native messaging): 4-byte little-endian length + UTF-8 JSON.
 """
@@ -15,29 +16,80 @@ import os
 import struct
 import sys
 import threading
-from ctypes import wintypes
 
 from .paths import data_dir
+
+IS_WIN = sys.platform == "win32"
+FAMILY = "AF_PIPE" if IS_WIN else "AF_UNIX"
 
 MAX_TO_BROWSER = 1024 * 1024  # the browser refuses host messages over 1 MB
 
 
 def pipe_address() -> str:
+    if not IS_WIN:
+        from .paths import runtime_dir
+        return str(runtime_dir() / "link.sock")
     user = os.environ.get("USERNAME", "user").replace("\\", "_")
     return rf"\\.\pipe\SENSIQ-{user}-link"
 
 
+_key_lock = threading.Lock()
+
+
 def link_key(create: bool = False) -> bytes:
+    """The random key both ends of the browser link and the control channel prove they know.
+    Created once (the app's threads may ask at the same moment); readable by this user only."""
     path = data_dir() / "link.key"
-    if not path.exists() and create:
-        path.write_bytes(os.urandom(32))
-    return path.read_bytes() if path.exists() else b""
+    with _key_lock:
+        if create and not path.exists():
+            try:
+                fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+            except FileExistsError:
+                pass
+            else:
+                with os.fdopen(fd, "wb") as f:
+                    f.write(os.urandom(32))
+        return path.read_bytes() if path.exists() else b""
+
+
+class _StdPosix:
+    """stdin/stdout as binary streams (Linux)."""
+
+    def __init__(self):
+        self.inp = sys.stdin.buffer
+        self.out = sys.stdout.buffer
+        self.lock = threading.Lock()
+
+    def read_exact(self, n: int) -> bytes:
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self.inp.read(n - len(buf))
+            if not chunk:
+                raise EOFError
+            buf += chunk
+        return bytes(buf)
+
+    def read_message(self) -> dict:
+        (length,) = struct.unpack("<I", self.read_exact(4))
+        return json.loads(self.read_exact(length).decode("utf-8"))
+
+    def write_message(self, msg: dict) -> None:
+        data = json.dumps(msg, separators=(",", ":")).encode("utf-8")
+        if len(data) > MAX_TO_BROWSER:
+            raise ValueError("message too large for the browser")
+        with self.lock:
+            try:
+                self.out.write(struct.pack("<I", len(data)) + data)
+                self.out.flush()
+            except (BrokenPipeError, ValueError) as exc:
+                raise EOFError from exc
 
 
 class _Std:
     """stdin/stdout through Win32 handles (works in a windowed exe with no console)."""
 
     def __init__(self):
+        from ctypes import wintypes
         k32 = ctypes.windll.kernel32
         k32.GetStdHandle.restype = wintypes.HANDLE
         self.k32 = k32
@@ -46,6 +98,7 @@ class _Std:
         self.lock = threading.Lock()
 
     def read_exact(self, n: int) -> bytes:
+        from ctypes import wintypes
         buf = bytearray()
         while len(buf) < n:
             chunk = ctypes.create_string_buffer(n - len(buf))
@@ -63,6 +116,7 @@ class _Std:
         data = json.dumps(msg, separators=(",", ":")).encode("utf-8")
         if len(data) > MAX_TO_BROWSER:
             raise ValueError("message too large for the browser")
+        from ctypes import wintypes
         payload = struct.pack("<I", len(data)) + data
         with self.lock:
             done = 0
@@ -74,8 +128,28 @@ class _Std:
                 done += wrote.value
 
 
+LINUX_BROWSERS = {"chrome", "google-chrome", "chromium", "chromium-browser", "brave", "msedge",
+                  "microsoft-edge", "vivaldi-bin", "opera"}
+
+
+def _parent_exe_linux() -> str:
+    from .platform.linux import parent_pid, process_name
+    pid = parent_pid(os.getpid())
+    first = process_name(pid)
+    for _ in range(5):  # through a launcher script when run from source
+        name = process_name(pid)
+        if name in LINUX_BROWSERS:
+            return name
+        pid = parent_pid(pid)
+        if pid <= 1:
+            break
+    return first
+
+
 def _parent_exe() -> str:
     """Name of the browser that started us (chrome.exe, msedge.exe, brave.exe...)."""
+    if not IS_WIN:
+        return _parent_exe_linux()
     try:
         from . import winutil
         import ctypes.wintypes as wt
@@ -113,10 +187,10 @@ def _parent_exe() -> str:
 
 def main() -> int:
     from multiprocessing.connection import Client
-    std = _Std()
+    std = _Std() if IS_WIN else _StdPosix()
     browser = _parent_exe()
     try:
-        conn = Client(pipe_address(), family="AF_PIPE", authkey=link_key())
+        conn = Client(pipe_address(), family=FAMILY, authkey=link_key())
     except Exception:
         conn = None
 

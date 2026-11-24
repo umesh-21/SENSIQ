@@ -41,7 +41,7 @@ def _card(text_lines, size=(700, 260)):
 
 def _text_obj(pdfium, raw, doc, page, text, x, y, size=12):
     obj = raw.FPDFPageObj_NewTextObj(doc.raw, b"Helvetica", ctypes.c_float(size))
-    buf = ctypes.create_unicode_buffer(text)
+    buf = ctypes.create_string_buffer(text.encode("utf-16-le") + b"\0\0")   # UTF-16 on every system
     raw.FPDFText_SetText(obj, ctypes.cast(buf, ctypes.POINTER(ctypes.c_ushort)))
     raw.FPDFPageObj_Transform(obj, 1, 0, 0, 1, x, y)
     raw.FPDFPage_InsertObject(page.raw, obj)

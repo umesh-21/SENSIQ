@@ -2,7 +2,8 @@
 
 Threads:
   * Tk main thread  - overlay UI, owns all windows
-  * FocusWatcher    - UI Automation: reads the focused field, applies replacements
+  * FocusWatcher    - UI Automation (Windows) / AT-SPI (Linux): reads the focused field,
+                      applies replacements
   * DetectorWorker  - runs rules + local NER model, debounced
   * pystray         - tray icon (posts menu clicks back to the main thread)
 """
@@ -17,10 +18,10 @@ import sys
 import threading
 from pathlib import Path
 
-from . import APP_NAME, __version__, winutil
+from . import APP_NAME, __version__, platform as plat
 from .detector.types import HIGH
 from .masking import suggest
-from .paths import data_dir
+from .paths import data_dir, log_dir
 
 log = logging.getLogger("sensiq")
 
@@ -36,7 +37,7 @@ def setup_logging(debug: bool) -> None:
     root.setLevel(logging.DEBUG if debug else logging.INFO)
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     handler = logging.handlers.RotatingFileHandler(
-        data_dir() / "sensiq.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+        log_dir() / "sensiq.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")
     handler.setFormatter(fmt)
     root.addHandler(handler)
     if debug and sys.stderr is not None:
@@ -49,16 +50,18 @@ class App:
     def __init__(self, args):
         import tkinter as tk
 
-        from .capture import FocusWatcher
         from .config import Config, IgnoreList
         from .overlay import Overlay
         from .worker import DetectorWorker
 
         self.args = args
-        from . import migrate
-        self.renamed = migrate.run()          # PII Guard (<= 1.3.0) -> SENSIQ: settings, registry
+        self.renamed = False
+        if plat.IS_WIN:
+            from . import migrate
+            self.renamed = migrate.run()      # PII Guard (<= 1.3.0) -> SENSIQ: settings, registry
         self.config = Config.load()
-        migrate.after_settings(self.config)
+        if plat.IS_WIN:
+            migrate.after_settings(self.config)
         if args.no_ner:
             self.config.data["ner"]["enabled"] = False
         self.ignore = IgnoreList.load()
@@ -73,7 +76,12 @@ class App:
                                on_fix_all=self.replace_all, on_style=self.toggle_style,
                                get_style=lambda: self.config.data.get("mask_style", "partial"))
         self.detector = DetectorWorker(self.config, self.ignore, self.events, self.stop)
+        if plat.IS_WIN:
+            from .capture import FocusWatcher
+        else:
+            from .capture_linux import FocusWatcher   # AT-SPI; test version
         self.watcher = FocusWatcher(self.events, self.config, self.stop)
+        self.scanner = None
         self.share_threads = []
         fs = self.config.data.get("file_scan", {})
         if fs.get("enabled", True):
@@ -89,14 +97,21 @@ class App:
                     skip = self.browser_link.active_browsers
                 if fs.get("clipboard", True):
                     self.share_threads.append(ClipboardWatcher(self.scanner, self.config, self.stop))
-                if fs.get("drag_drop", True):
+                # Linux has no global hooks for drags and Open dialogs: Files → Scripts →
+                # "Check with SENSIQ", the tray's "Check a file…" and the browser extension instead
+                if fs.get("drag_drop", True) and plat.IS_WIN:
                     self.share_threads.append(DragWatcher(self.scanner, self.config, self.stop, skip_apps=skip))
-                if fs.get("file_dialogs", True):
+                if fs.get("file_dialogs", True) and plat.IS_WIN:
                     self.share_threads.append(DialogWatcher(self.scanner, self.config, self.stop, skip_apps=skip))
                 from .sharewatch import OpenedFileWatcher  # does nothing until switched on in the tray
                 self.share_threads.append(OpenedFileWatcher(self.scanner, self.config, self.events, self.stop))
             except Exception:
                 log.exception("Image and file checks unavailable")
+        try:
+            from .control import ControlServer
+            self.share_threads.append(ControlServer(lambda paths: self.events.put(("check_files", paths)), self.stop))
+        except Exception:
+            log.exception("control channel unavailable")
         try:
             from .updater import UpdateChecker
             self.share_threads.append(UpdateChecker(self.config, self.events, self.stop))
@@ -134,10 +149,19 @@ class App:
                 "PII Guard is now called SENSIQ. Your settings were kept. If you used the browser extension, "
                 "add it again from its new folder: right-click the shield → Check uploads in my browser (set up)…",
                 "info", ms=20000))
-        self.root.after(1500, lambda: self._notify(
-            "SENSIQ is on. It checks what you type, and images and files you copy, drag or upload, "
-            "on this computer only. "
-            "The shield in the system tray has the settings."))
+        if plat.IS_WIN:
+            hello = ("SENSIQ is on. It checks what you type, and images and files you copy, drag or upload, "
+                     "on this computer only. The shield in the system tray has the settings.")
+        else:
+            hello = ("SENSIQ is on. It checks images and files you copy or upload, on this computer only. "
+                     "In Files, right-click a file → Scripts → Check with SENSIQ. "
+                     "The shield in the top bar has the settings.")
+        self.root.after(1500, lambda: self._notify(hello))
+        if plat.IS_LINUX:
+            self.root.after(800, self._linux_integration)
+        if getattr(self.args, "check", None):
+            paths = list(self.args.check)
+            self.root.after(2000, lambda: self._handle(("check_files", paths)))
         try:
             self.root.mainloop()
         except KeyboardInterrupt:
@@ -256,18 +280,35 @@ class App:
         elif kind == "update_progress":
             self.overlay.update_status(ev[1])
         elif kind == "update_ready":
+            from . import updater
+            if not plat.IS_WIN:   # Linux: the system asks for your password, then SENSIQ restarts
+                self.overlay.update_status("Installing… Enter your password when Ubuntu asks for it.")
+                self._install_linux_update(ev[1])
+                return
             self.overlay.update_status("Installing… SENSIQ will restart in a moment.")
             try:
-                from . import updater
                 updater.install(ev[1])
                 self.root.after(1500, self.quit)
             except Exception as exc:
                 self._handle(("update_failed", str(exc)))
+        elif kind == "update_installed":
+            self.overlay.update_status("Installed. SENSIQ is restarting…")
+            from . import updater
+            updater.restart_later()
+            self.root.after(800, self.quit)
+        elif kind == "check_files":
+            paths = [p for p in ev[1] if Path(p).exists()]
+            if paths and self.scanner is not None:
+                self.scanner.submit_files("File you chose to check", paths, kind="opened")
+            elif self.scanner is None:
+                self.overlay.toast("File checks are switched off in the settings.", "warn", ms=5000)
         elif kind == "tray":
             self._on_tray(ev[1])
         elif kind == "fatal":
-            winutil.message_box(ev[1], APP_NAME, error=True)
+            plat.message_box(ev[1], APP_NAME, error=True)
             self.quit()
+        elif kind == "typing_off":   # Linux: AT-SPI unavailable; files are still checked
+            log.info("typing checks unavailable: %s", ev[1])
 
     def _on_field(self, st) -> None:
         if self.field is None or self.field.key != st.key:
@@ -414,9 +455,22 @@ class App:
         info = getattr(self, "update_info", None)
         if info is None:
             return
-        self.overlay.update_card(info, __version__, on_update=lambda i=info: self._start_update(i),
+        from . import updater
+        if updater.can_install():
+            on_update = lambda i=info: self._start_update(i)  # noqa: E731
+        else:   # e.g. running from source on Linux: the release page has the new version
+            on_update = lambda i=info: plat.open_path(i.page)  # noqa: E731
+        self.overlay.update_card(info, __version__, on_update=on_update,
                                  on_skip=lambda i=info: self._skip_update(i),
-                                 on_page=lambda i=info: winutil.open_path(i.page))
+                                 on_page=lambda i=info: plat.open_path(i.page))
+
+    def _install_linux_update(self, package) -> None:
+        from . import updater
+
+        def work():
+            ok, why = updater.install_linux(package)
+            self.events.put(("update_installed",) if ok else ("update_failed", why))
+        threading.Thread(target=work, name="update-install", daemon=True).start()
 
     def _skip_update(self, info) -> None:
         self.update_info = None
@@ -529,8 +583,8 @@ class App:
         elif action == "style":
             self.toggle_style()
         elif action == "startup":
-            enabled = not winutil.is_startup_enabled()
-            winutil.set_startup(enabled)
+            enabled = not plat.is_startup_enabled()
+            plat.set_startup(enabled)
             self.overlay.toast("SENSIQ will start when you sign in." if enabled else
                                "SENSIQ won't start automatically.", "info", ms=2500)
         elif action == "opened_files":
@@ -541,13 +595,22 @@ class App:
                                else "SENSIQ won't offer checks when you open files.", "info", ms=3500)
         elif action == "browser_setup":
             self._browser_setup()
+        elif action == "check_file":
+            self._check_file_dialog()
+        elif action == "typing_setup":
+            self._typing_setup()
         elif action == "add_hindi":
-            self.overlay.toast("Installing Hindi reading for images. Windows will ask for permission; "
-                               "the download is about 2 MB.", "info", ms=6000)
-            threading.Thread(target=self._install_ocr_language, args=("hi-IN",), daemon=True).start()
+            if plat.IS_WIN:
+                self.overlay.toast("Installing Hindi reading for images. Windows will ask for permission; "
+                                   "the download is about 2 MB.", "info", ms=6000)
+                threading.Thread(target=self._install_ocr_language, args=("hi-IN",), daemon=True).start()
+            else:
+                self.overlay.toast("Installing Hindi reading for images. Ubuntu will ask for your password; "
+                                   "the download is about 1 MB.", "info", ms=6000)
+                threading.Thread(target=self._install_ocr_language_linux, args=("hin",), daemon=True).start()
         elif action == "safe_open":
             from .paths import safe_copies_dir
-            winutil.open_path(safe_copies_dir())
+            plat.open_path(safe_copies_dir())
         elif action == "safe_change":
             self._change_safe_copies_folder()
         elif action == "safe_default":
@@ -567,7 +630,7 @@ class App:
         elif action == "selftest":
             threading.Thread(target=self._selftest, daemon=True).start()
         elif action == "settings":
-            winutil.open_in_notepad(self.config.path)
+            plat.open_text_file(self.config.path)
         elif action == "reload":
             self.config.reload()
             self._apply_safe_copies_folder()
@@ -581,7 +644,7 @@ class App:
             self.watcher.commands.put(("refresh",))
             self.overlay.toast("Ignored items cleared.", "ok", ms=2000)
         elif action == "logs":
-            winutil.open_path(data_dir())
+            plat.open_path(log_dir())
         elif action == "quit":
             self.quit()
         if self.tray:
@@ -594,6 +657,8 @@ class App:
         register_host()
         folder = extension_dir()
         page = data_dir() / "browser-setup.html"
+        linux_note = ("" if plat.IS_WIN else " Chromium installed from the Snap Store can't talk to "
+                      "programs outside it: use Google Chrome, Brave or Edge from their own .deb packages.")
         page.write_text(f"""<!doctype html><meta charset="utf-8"><title>SENSIQ for your browser</title>
 <style>body{{font:15px/1.5 Segoe UI,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;color:#1c2433}}
 code{{background:#eef1f5;padding:2px 6px;border-radius:4px}} li{{margin:8px 0}} h1{{font-size:22px}}
@@ -603,14 +668,14 @@ code{{background:#eef1f5;padding:2px 6px;border-radius:4px}} li{{margin:8px 0}} 
 the site gets them, and you can send a safe copy instead. Everything stays on this computer.</p>
 <ol>
 <li>In Chrome open <code>chrome://extensions</code> (Edge: <code>edge://extensions</code>,
-Brave: <code>brave://extensions</code>).</li>
+Brave: <code>brave://extensions</code>).{linux_note}</li>
 <li>Turn on <b>Developer mode</b> (top right in Chrome, left side in Edge).</li>
 <li>Click <b>Load unpacked</b> and choose this folder:<span class="path">{html.escape(str(folder))}</span></li>
 <li>Done. "SENSIQ" appears in the list. Keep SENSIQ running in the tray.</li>
 </ol>
 <p>To remove it later, click Remove on the extension in the same page.</p>""", encoding="utf-8")
-        winutil.open_path(page)
-        winutil.open_path(folder)
+        plat.open_path(page)
+        plat.open_path(folder)
         self.overlay.toast("Follow the steps in the page that opened to add SENSIQ to your browser.",
                            "info", ms=7000)
 
@@ -634,6 +699,57 @@ Brave: <code>brave://extensions</code>).</li>
                          "Hindi reading wasn't installed (permission refused or no internet)."))
         if self.tray:
             self.tray.refresh()
+
+    def _install_ocr_language_linux(self, code: str) -> None:
+        """Adds a Tesseract language pack (Ubuntu asks for the user's password)."""
+        import subprocess
+        from . import ocr
+        try:
+            subprocess.run(["pkexec", "apt-get", "install", "-y", f"tesseract-ocr-{code}"], timeout=900,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=plat.child_env())
+        except Exception:
+            log.exception("OCR language install failed")
+        ocr.reset()
+        ok = code in ocr.installed_languages()
+        self.events.put(("files_unchecked" if not ok else "scan_progress",
+                         "Hindi reading is installed: images are now read in English and Hindi." if ok else
+                         "Hindi reading wasn't installed (password not given or no internet)."))
+        if self.tray:
+            self.tray.refresh()
+
+    def _check_file_dialog(self) -> None:
+        """Tray: pick files or a folder to check (works on every system)."""
+        import tkinter as tk
+        from tkinter import filedialog
+        holder = tk.Toplevel(self.root)
+        holder.withdraw()
+        holder.attributes("-topmost", True)
+        try:
+            chosen = filedialog.askopenfilenames(parent=holder, initialdir=str(Path.home()),
+                                                 title="Choose files to check for private details")
+        finally:
+            holder.destroy()
+        if chosen:
+            self._handle(("check_files", list(chosen)))
+
+    def _typing_setup(self) -> None:
+        """Linux: typing checks read text fields through the desktop's accessibility service."""
+        from .capture_linux import enable_accessibility
+        if enable_accessibility():
+            self.overlay.toast("Typing checks are turned on. Sign out and back in (or restart your apps) "
+                               "so apps start sharing their text boxes with SENSIQ. This is a test version: "
+                               "it works best in GNOME apps, LibreOffice, Chrome and Firefox.", "ok", ms=12000)
+        else:
+            self.overlay.toast("Couldn't turn on typing checks: this desktop has no accessibility service.",
+                               "warn", ms=8000)
+
+    def _linux_integration(self) -> None:
+        """Files (Nautilus) right-click script "Check with SENSIQ"; kept in step with this install."""
+        try:
+            from .linuxdesktop import install_files_script
+            install_files_script()
+        except Exception:
+            log.debug("Files script not installed", exc_info=True)
 
     PAUSE_SECONDS = 3600
 
@@ -663,10 +779,10 @@ Brave: <code>brave://extensions</code>).</li>
 
     def _selftest(self) -> None:
         from .selftest import run_selftest
-        path = data_dir() / "selftest.txt"
+        path = log_dir() / "selftest.txt"
         try:
             run_selftest(path, use_ner=self.config.data["ner"].get("enabled", True))
-            winutil.open_in_notepad(path)
+            plat.open_text_file(path)
         except Exception:
             log.exception("self-test failed")
 
@@ -682,33 +798,48 @@ def main(argv=None) -> int:
     parser.add_argument("--no-open", action="store_true", help="with --selftest: don't open the report")
     parser.add_argument("--no-ner", action="store_true", help="patterns only, skip the name model")
     parser.add_argument("--no-tray", action="store_true", help="run without a tray icon")
+    parser.add_argument("--check", nargs="+", metavar="FILE",
+                        help="check these files (hands them to SENSIQ if it is already running)")
+    parser.add_argument("files", nargs="*", help=argparse.SUPPRESS)  # "Open with SENSIQ" (same as --check)
     parser.add_argument("--debug", action="store_true", help="verbose log")
     parser.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     args = parser.parse_args(argv)
 
     setup_logging(args.debug)
+    if args.files:
+        args.check = list(args.check or []) + list(args.files)
+    if args.check:
+        args.check = [str(Path(p).expanduser().resolve()) for p in args.check]
 
     if args.selftest:
         from .selftest import run_selftest
-        path = data_dir() / "selftest.txt"
+        path = log_dir() / "selftest.txt"
         ok, report = run_selftest(path, use_ner=not args.no_ner)
         print(report)
         if getattr(sys, "frozen", False) and not args.no_open:
-            winutil.open_in_notepad(path)
+            plat.open_text_file(path)
         return 0 if ok else 1
 
-    if not winutil.IS_WIN:
-        print("Live protection needs Windows. On this system you can run: python -m sensiq --selftest")
+    if not plat.IS_WIN and not plat.IS_LINUX:
+        print("SENSIQ runs on Windows and Linux. On this system you can run: python -m sensiq --selftest")
+        return 2
+    if plat.IS_LINUX and not plat.has_display():
+        print("SENSIQ needs a desktop session (no display found). You can run: python -m sensiq --selftest")
         return 2
 
-    winutil.set_dpi_awareness()
-    if not winutil.acquire_single_instance():
-        winutil.message_box("SENSIQ is already running. Look for the shield icon in the system tray.")
+    plat.set_dpi_awareness()
+    if not plat.acquire_single_instance():
+        if args.check:
+            from .control import send_check
+            if send_check(args.check):
+                return 0
+        plat.message_box("SENSIQ is already running. Look for the shield icon in the "
+                         + ("system tray." if plat.IS_WIN else "top bar."))
         return 0
     try:
         return App(args).run()
     except Exception:
         log.exception("fatal error")
-        winutil.message_box("SENSIQ stopped because of an error. Details are in "
-                            f"{data_dir() / 'sensiq.log'}", error=True)
+        plat.message_box("SENSIQ stopped because of an error. Details are in "
+                         f"{log_dir() / 'sensiq.log'}", error=True)
         return 1

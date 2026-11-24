@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q /usr/share/applications || true; fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t /usr/share/icons/hicolor || true; fi
+# Each user's settings (~/.config/sensiq), safe copies (~/.local/share/sensiq) and the Files script
+# "Check with SENSIQ" are theirs to keep; the script does nothing once SENSIQ is removed.
+exit 0

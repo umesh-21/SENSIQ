@@ -5,6 +5,8 @@ import threading
 import zipfile
 from pathlib import Path
 
+import sys
+
 import pytest
 
 from sensiq import filescan, redact
@@ -108,6 +110,18 @@ def test_signature_next_to_label(tmp_path, engine):
     img.save(src)
     res = scanner(engine)._scan_file(src)
     assert "SIGNATURE" in [f.kind for f in res.findings]
+
+
+@needs_ocr
+def test_empty_signature_line_is_not_a_signature(tmp_path, engine):
+    img = _text_image(["Application form"], size=(900, 520))
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(img)
+    d.text((520, 380), "____________", fill="black", font=_font())
+    d.text((540, 425), "Signature", fill="black", font=_font())
+    src = tmp_path / "blank-form.png"
+    img.save(src)
+    assert "SIGNATURE" not in [f.kind for f in scanner(engine)._scan_file(src).findings]
 
 
 @needs_ocr
@@ -254,6 +268,7 @@ def test_no_ten_file_cap(tmp_path, engine):
     assert any(e[0] == "scan_progress" for e in events)   # "Checking 25 files…"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
 def test_opened_file_offer(tmp_path, engine, monkeypatch):
     """Opening a document (it appears in Recent items) leads to a 'Check it' offer, only when switched on."""
     import time as _t

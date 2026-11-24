@@ -1,9 +1,45 @@
-# SENSIQ for Linux (Ubuntu 22.04 – 24.04) — plan and hand-off
+# SENSIQ for Linux (Ubuntu 22.04 – 24.04) — plan and status
 
-Status: **not started** (planned on 2026-11-24). The Windows app is at 1.6.0. This file is the
-brief for whoever (or whichever Claude session) builds the Linux version on a Linux machine.
+Status (2026-11-24): **phases 1–6 built and tested on Ubuntu 22.04** (Python 3.10, Tesseract 4.1.1,
+headless with Xvfb). **Not released yet**: the next version tag will build and publish the
+`.deb` via the release workflow. The Windows app is at 1.6.0 and its code paths are unchanged
+apart from the refactors listed below.
 
-## Start here (on the Ubuntu machine)
+## Decisions taken
+1. **Scope:** files *and* typing protection (AT-SPI typing checks shipped as a "test version").
+2. **Package:** `.deb` (`/opt/sensiq`, `/usr/bin/sensiq`), updates via `pkexec apt-get install`
+   after the user clicks Update now.
+
+## What was done, phase by phase
+| Phase | Result | Tested here |
+|---|---|---|
+| 1 Platform layer | `sensiq/platform/{windows,linux}.py` (`winutil.py` is now a shim); XDG paths in `paths.py`; autostart `.desktop`; `fcntl` single-instance lock; `control.py` (`--check FILE` hands files to the running app over a 0600 Unix socket / named pipe). Fixed a real Linux bug: path keys were lower-cased (`str(p).lower()`), so ZIP safe copies kept the original data on a case-sensitive disk. | `tests/test_linux.py` |
+| 2 OCR | `ocr.py` engine classes: `_WinEngine` (unchanged behaviour) and `_TessEngine` (Tesseract CLI, image piped via stdin, TSV word boxes). Shared slicing/retry/variants; Tesseract adds a sparse-text (`--psm 11`) variant and runs variants in parallel. Word confidence is used to (a) retry rotations when the reading is junk, (b) drop words < 10 conf, (c) add Hindi lines only where they beat the English reading. | all image/PDF tests pass with Tesseract |
+| 3 Core app | tray (explicit pystray backend: AppIndicator > GTK > Xorg), cards (Ubuntu font, no Win32 calls), clipboard watcher (xclip TIMESTAMP/TARGETS polling; wl-paste fallback), "Check a file…", Files script, "opened files" via `recently-used.xbel`, safe copies shown with FileManager1 D-Bus, notify-send, `.deb` updater. | app end-to-end under Xvfb (test + screenshots) |
+| 4 Browser link | Unix socket `$XDG_RUNTIME_DIR/sensiq/link.sock` (0600) + same key; manifests in `~/.config/{google-chrome,chromium,BraveSoftware/Brave-Browser,microsoft-edge,vivaldi}/NativeMessagingHosts`; POSIX stdio framing. | host relay test (source and packaged binary). **Not tested in a real Chrome** (none on the build machine). |
+| 5 Packaging + CI | `build_linux.sh`, `packaging/linux/sensiq.spec` (GTK limited to Adwaita), `.deb` ≈ 211 MB (576 MB installed). `release.yml`: `linux` (22.04 build + tests + install/remove), `linux-24` (install/reinstall/remove on 24.04), `publish-linux` (uploads after the Windows job created the release, appends a Linux line to the notes). | `.deb` built and the packaged app's self-test PASSes; **apt install/upgrade not run here (no root)** — CI does it |
+| 6 Typing (AT-SPI) | `capture_linux.py`: private GLib context, `object:state-changed:focused` events, reads `Text`, replaces via `EditableText` (fallback: select + Ctrl+V, X11 only), password boxes and deny-listed apps never read, Wayland → badge in the corner. Tray item turns accessibility on (`toolkit-accessibility` + `org.a11y.Status.IsEnabled`). | real GTK text box under Xvfb (`test_typing_checks_with_atspi`) |
+
+## Still to do / to check on a real Ubuntu desktop
+- Real Chrome/Brave/Edge with the extension: upload, paste, drop (Snap Chromium can't use native hosts).
+- GNOME Wayland session and "Ubuntu on Xorg": tray icon, card placement, clipboard (XWayland sync), notifications.
+- Typing checks in Firefox, Chrome (needs `toolkit-accessibility`), LibreOffice, Electron apps.
+- First tagged release: check the CI jobs and the update card offering the `.deb` (`DEB_NAME` in `updater.py`).
+- Size: spaCy's `collect_all` bundles every language (112 MB); only English is needed (same on Windows).
+
+## Gotchas found while porting
+- `Atspi.set_main_context(ctx)` must be called **after** `Atspi.init()`; before it, events only
+  arrive during our own synchronous calls. AT-SPI calls inside an event callback fail — only store
+  the source there.
+- pystray gives up (ValueError) when the AppIndicator typelib is missing instead of trying GTK/Xorg.
+- PyInstaller sets `LD_LIBRARY_PATH` etc. for the bundle; every system program SENSIQ starts
+  (tesseract, xclip, gdbus, pkexec…) gets `plat.child_env()` so they load the system's libraries.
+- Tests built PDF text with `create_unicode_buffer` (wchar_t is 32-bit on Linux): use UTF-16 bytes.
+- Tesseract reads pen strokes as words (e.g. `L\/N/`); the signature finder ignores tall, non-letter "words".
+
+## Original plan
+
+### Start here (on the Ubuntu machine)
 
 ```bash
 sudo apt update
@@ -11,20 +47,8 @@ sudo apt install -y git python3 python3-venv python3-dev python3-tk \
     tesseract-ocr tesseract-ocr-eng tesseract-ocr-hin \
     gir1.2-ayatanaappindicator3-0.1 libnotify-bin wl-clipboard xclip
 git clone https://github.com/umesh-21/SENSIQ.git && cd SENSIQ
-code .            # VS Code; start Claude Code in this folder (it reads CLAUDE.md)
+code .            # open the folder in VS Code
 ```
-
-First prompt to give Claude Code there:
-
-> Read CLAUDE.md and docs/LINUX_PORT.md. Build the Linux version of SENSIQ for Ubuntu
-> 22.04–24.04 following the plan in docs/LINUX_PORT.md, phase by phase. Keep the Windows
-> version working. Run the tests on this machine after each phase and tell me what works.
-
-## Open decisions (ask the user before phase 1 if still open)
-1. **Scope of the first Linux release** — recommended: *files first* (everything except typing
-   warnings); typing protection via AT-SPI as a later, experimental phase.
-2. **Package** — recommended: a `.deb` (pulls in Tesseract etc.; updates install with the
-   user's password via `pkexec`). Alternative: AppImage (no root, but Tesseract separate).
 
 ## What carries over, what changes
 

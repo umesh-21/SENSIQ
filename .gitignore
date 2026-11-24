@@ -13,3 +13,6 @@ dist/
 models/
 # release scratch
 release-notes.md
+# Linux build output (build_linux.sh)
+assets/sensiq.png
+!packaging/linux/sensiq.spec

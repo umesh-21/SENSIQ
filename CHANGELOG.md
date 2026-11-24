@@ -3,6 +3,20 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
+## [Unreleased]
+
+### SENSIQ for Linux (Ubuntu 22.04 and 24.04)
+- **Install with one file:** `sudo apt install ./sensiq_x.y.z_amd64.deb`. Everything still runs on your computer only; images are read with Tesseract (English and Hindi).
+- **Check a file before you share it:** in Files, right-click → **Scripts → Check with SENSIQ**, or the shield in the top bar → **Check a file…**. Copied images and files are checked by themselves, and web uploads through the browser extension, the same as on Windows.
+- **Typing warnings (test version):** shield → **Typing checks: turn on…**. Works in GNOME apps, LibreOffice, Firefox and Chrome.
+- **Updates are only offered:** nothing is installed until you click **Update now**; then Ubuntu asks for your password.
+
+### Also new (Windows and Linux)
+- Tray → **Check a file…** checks any file you pick.
+
+### Fixed
+- An empty line to sign on ("Signature: ________") is no longer listed as a signature.
+
 ## [1.6.0]
 
 ### Fixed

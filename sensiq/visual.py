@@ -413,18 +413,28 @@ def _widen(extracted, s: int, e: int, group: int) -> None:
 SIGN_LABEL = re.compile(r"^(?:signature|signed|sign|signatory|authori[sz]ed|हस्ताक्षर|ह०|ह\.)\W*$", re.I)
 
 
+def _printed(word: str, box: Box, label_h: float) -> bool:
+    """False for an OCR "word" read from pen strokes: taller than the label and mostly not letters
+    (Tesseract reads a signature as e.g. "L\\/N/"). Printed lines such as "______" stay masked."""
+    alnum = sum(ch.isalnum() for ch in word)
+    tall = (box[3] - box[1]) > 1.4 * label_h
+    return not (tall and alnum < 0.75 * len(word))
+
+
 def find_signatures(image, text: str, words: Sequence[Tuple[int, int, Box]]) -> List[Box]:
     """Ink areas next to a "Signature" label: the area just above it, or right of it on the same line.
     Only areas with real ink strokes (not printed text OCR could read) are returned."""
     import numpy as np
     gray = np.asarray(image.convert("L"), dtype=np.uint8)
     H, W = gray.shape
-    text_boxes = [b for _, _, b in words]
     out: List[Box] = []
     for s, e, (l, t, r, b) in words:
         if not SIGN_LABEL.match(text[s:e]):
             continue
         h = max(8.0, b - t)
+        # printed words near the label; OCR "words" read from the ink itself (e.g. "L\/N/",
+        # taller than the label or mostly strokes) must not hide the signature
+        text_boxes = [wb for ws, we, wb in words if _printed(text[ws:we], wb, h)]
         candidates = [
             (l - h * 4, t - h * 3.5, r + h * 6, t - 1),          # above the label (most forms)
             (r + 2, t - h * 1.5, r + h * 14, b + h * 1.5),       # to the right, same line
@@ -442,6 +452,8 @@ def find_signatures(image, text: str, words: Sequence[Tuple[int, int, Box]]) -> 
             if ink < 0.01:
                 continue
             ys, xs = np.nonzero(region)
+            if ys.max() - ys.min() + 1 < max(5.0, h * 0.3):
+                continue                # a printed line to sign on ("________"), not a signature
             out.append((cl + xs.min(), ct + ys.min(), cl + xs.max() + 1, ct + ys.max() + 1))
             break
     return out

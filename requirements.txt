@@ -1,5 +1,6 @@
-uiautomation>=2.0.18
-comtypes>=1.2.0
+# typing checks: UI Automation on Windows (Linux uses AT-SPI from the system: python3-gi)
+uiautomation>=2.0.18; sys_platform == "win32"
+comtypes>=1.2.0; sys_platform == "win32"
 onnxruntime>=1.17,<2
 tokenizers>=0.15
 numpy>=1.24
@@ -10,14 +11,14 @@ presidio-analyzer>=2.2.360
 spacy>=3.7,<3.9
 # PDFs (text layer + rendering scanned pages)
 pypdfium2>=4.30
-# Windows' built-in OCR for images and scanned PDF pages
-winrt-runtime>=2.0
-winrt-Windows.Media.Ocr>=2.0
-winrt-Windows.Graphics.Imaging>=2.0
-winrt-Windows.Storage.Streams>=2.0
-winrt-Windows.Foundation>=2.0
-winrt-Windows.Foundation.Collections>=2.0
-winrt-Windows.Globalization>=2.0
+# Windows' built-in OCR for images and scanned PDF pages (Linux uses Tesseract, an apt package)
+winrt-runtime>=2.0; sys_platform == "win32"
+winrt-Windows.Media.Ocr>=2.0; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging>=2.0; sys_platform == "win32"
+winrt-Windows.Storage.Streams>=2.0; sys_platform == "win32"
+winrt-Windows.Foundation>=2.0; sys_platform == "win32"
+winrt-Windows.Foundation.Collections>=2.0; sys_platform == "win32"
+winrt-Windows.Globalization>=2.0; sys_platform == "win32"
 # QR codes / barcodes, iPhone photos (HEIC), old Office files
 zxing-cpp>=2.2
 pillow-heif>=0.16

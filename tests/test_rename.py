@@ -1,5 +1,8 @@
 """PII Guard (<= 1.3.0) is now SENSIQ: data moves over, old releases' file names still work."""
 import hashlib
+import sys
+
+import pytest
 
 from sensiq import migrate, updater
 from sensiq.config import Config
@@ -28,6 +31,7 @@ def test_saved_deny_list_gets_new_exe_name():
     assert cfg.data["deny_processes"] == ["keepass.exe", "sensiq.exe"]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
 def test_release_with_old_file_name_is_still_found(monkeypatch):
     import json
     from tests.test_updater import _Resp
@@ -46,6 +50,7 @@ def test_release_with_old_file_name_is_still_found(monkeypatch):
     assert info.setup_name == "PIIGuard-Setup-9.0.0.exe" and info.sha256 == sha
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
 def test_new_name_preferred_when_both_are_published(monkeypatch):
     import json
     from tests.test_updater import _Resp

@@ -83,3 +83,100 @@ jobs:
           } else {
             gh release create $env:TAG @files --title "SENSIQ $env:VERSION" --notes-file release-notes.md
           }
+
+  # ---- Linux (Ubuntu 22.04 - 24.04): sensiq_X.Y.Z_amd64.deb ------------------------------------
+  # Built on 22.04 so the package's libraries work on 22.04 and 24.04. Runs next to the Windows
+  # build; "publish-linux" adds the .deb to the release once the Windows job has created it.
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Check the tag matches the app version
+        run: |
+          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' sensiq/__init__.py)
+          [ "v$v" = "$TAG" ] || { echo "Tag $TAG doesn't match __version__ $v"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-venv python3-dev python3-tk python3-gi \
+            gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 gir1.2-atspi-2.0 at-spi2-core \
+            tesseract-ocr tesseract-ocr-eng tesseract-ocr-hin xvfb xclip libnotify-bin dbus-x11 fonts-liberation
+
+      - name: Build app and .deb
+        run: ./build_linux.sh --skip-tests
+
+      - name: Unit tests (virtual display)
+        run: xvfb-run -a .venv/bin/python -m pytest -q tests
+
+      - name: Install, run and remove the .deb
+        run: |
+          deb="dist/sensiq_${VERSION}_amd64.deb"
+          sudo apt-get install -y "./$deb"
+          sensiq --version
+          xvfb-run -a sensiq --selftest --no-open
+          sudo apt-get remove -y sensiq
+          test ! -e /opt/sensiq/sensiq
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: |
+            dist/sensiq_*_amd64.deb
+            dist/sensiq_*_amd64.deb.sha256
+          retention-days: 7
+
+  linux-24:
+    needs: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-deb
+          path: dist
+
+      - name: Install, upgrade over itself, run and remove on Ubuntu 24.04
+        run: |
+          sudo apt-get update
+          deb=$(ls dist/sensiq_*_amd64.deb)
+          (cd dist && sha256sum -c "$(basename "$deb").sha256")
+          sudo apt-get install -y "./$deb" xvfb
+          sensiq --version
+          xvfb-run -a sensiq --selftest --no-open
+          sudo apt-get install -y --reinstall "./$deb"
+          sensiq --version
+          sudo apt-get remove -y sensiq
+          test ! -e /opt/sensiq/sensiq
+
+  publish-linux:
+    needs: [build, linux, linux-24]
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-deb
+          path: dist
+
+      - name: Add the .deb to the release
+        run: |
+          deb=$(ls dist/sensiq_*_amd64.deb)
+          name=$(basename "$deb")
+          gh release upload "$TAG" "$deb" "$deb.sha256" --clobber --repo "$GITHUB_REPOSITORY"
+          gh release view "$TAG" --json body -q .body --repo "$GITHUB_REPOSITORY" > notes.md
+          if ! grep -q "Linux (Ubuntu" notes.md; then
+            hash=$(cut -d' ' -f1 "$deb.sha256")
+            printf '\n\n**Linux (Ubuntu 22.04 / 24.04, 64-bit):** download `%s` below and run `sudo apt install ./%s`. Already installed? SENSIQ offers this update by itself.\n\nSHA-256 (Linux): `%s`\n' \
+              "$name" "$name" "$hash" >> notes.md
+            gh release edit "$TAG" --notes-file notes.md --repo "$GITHUB_REPOSITORY"
+          fi

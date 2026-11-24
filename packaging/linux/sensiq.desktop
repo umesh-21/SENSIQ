@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=SENSIQ
+GenericName=Privacy check
+Comment=Discover before you disclose: checks files and images for private details before you share them
+Exec=/usr/bin/sensiq %F
+Icon=sensiq
+Terminal=false
+Categories=Utility;Security;
+Keywords=privacy;aadhaar;pan;redact;pii;
+MimeType=image/png;image/jpeg;image/webp;image/heic;image/tiff;image/bmp;application/pdf;application/zip;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/vnd.oasis.opendocument.text;text/plain;text/csv;
+StartupNotify=false

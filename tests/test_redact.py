@@ -97,7 +97,7 @@ def test_text_layer_pdf(tmp_path):
     font = raw.FPDFText_LoadStandardFont(doc.raw, b"Helvetica")
     obj = raw.FPDFPageObj_NewTextObj(doc.raw, b"Helvetica", ctypes.c_float(14))
     text = "Applicant Aadhaar 4918 3205 7615 for the admission form"
-    buf = ctypes.create_unicode_buffer(text)
+    buf = ctypes.create_string_buffer(text.encode("utf-16-le") + b"\0\0")   # UTF-16 on every system
     raw.FPDFText_SetText(obj, ctypes.cast(buf, ctypes.POINTER(ctypes.c_ushort)))
     raw.FPDFPageObj_Transform(obj, 1, 0, 0, 1, 30, 100)
     raw.FPDFPage_InsertObject(page.raw, obj)

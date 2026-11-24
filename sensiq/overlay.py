@@ -8,7 +8,7 @@ import re
 import tkinter as tk
 from typing import Callable, List, Optional, Tuple
 
-from . import winutil
+from . import platform as plat
 from .detector.types import HIGH, LOW, MEDIUM, Finding
 from .masking import REDACT, suggest
 
@@ -22,6 +22,24 @@ SEV_COLOR = {HIGH: "#C8102E", MEDIUM: "#A35F00", LOW: "#46607A"}
 TOAST_ACCENT = {"high": SEV_COLOR[HIGH], "warn": SEV_COLOR[MEDIUM], "ok": ACTION, "info": MUTED}
 KEY = "#FF00FE"  # transparent colour for the round badge
 MAX_ROWS = 6
+
+
+def _font_families(root) -> Tuple[str, str, str, str]:
+    """(text, semibold, symbol, mono) font families. Windows: Segoe UI / Consolas. Linux: the
+    desktop's font (Ubuntu, Cantarell...) with bold standing in for semibold."""
+    if plat.IS_WIN:
+        return "Segoe UI", "Segoe UI Semibold", "Segoe UI Symbol", "Consolas"
+    try:
+        from tkinter import font as tkfont
+        have = set(tkfont.families(root))
+    except Exception:
+        have = set()
+    ui = next((f for f in ("Ubuntu", "Cantarell", "Noto Sans", "DejaVu Sans", "Liberation Sans") if f in have),
+              "TkDefaultFont")
+    mono = next((f for f in ("Ubuntu Mono", "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono") if f in have),
+                "TkFixedFont")
+    symbol = "DejaVu Sans" if "DejaVu Sans" in have else ui
+    return ui, ui, symbol, mono
 
 
 def _preview(s: str, limit: int = 30) -> str:
@@ -116,12 +134,22 @@ class Overlay:
         self.panel_open = False
         self.toast_win = None
         self._toast_job = None
-        self.f_body = ("Segoe UI", 9)
-        self.f_small = ("Segoe UI", 8)
-        self.f_label = ("Segoe UI Semibold", 9)
-        self.f_title = ("Segoe UI Semibold", 10)
-        self.f_mono = ("Consolas", 9)
-        self.f_mono_strike = ("Consolas", 9, "overstrike")
+        plat.attach_tk(root)
+        self._ui, self._semi, self._symbol, self._mono = _font_families(root)
+        self.f_body = self.font(9)
+        self.f_small = self.font(8)
+        self.f_label = self.font(9, bold=True)
+        self.f_title = self.font(10, bold=True)
+        self.f_mono = (self._mono, 9)
+        self.f_mono_strike = (self._mono, 9, "overstrike")
+
+    def font(self, size: int, bold: bool = False, symbol: bool = False) -> tuple:
+        """A Tk font: Windows uses the "Segoe UI Semibold" family, other systems bold."""
+        if symbol:
+            return (self._symbol, size)
+        if not bold:
+            return (self._ui, size)
+        return (self._semi, size) if plat.IS_WIN else (self._semi, size, "bold")
 
     def px(self, v: float) -> int:
         return int(round(v * self.scale))
@@ -141,18 +169,18 @@ class Overlay:
 
     def _show(self, w, x: int, y: int, width: Optional[int] = None, height: Optional[int] = None) -> None:
         w.geometry(f"+{x}+{y}" if width is None else f"{width}x{height}+{x}+{y}")
-        prev = winutil.foreground_window()
+        prev = plat.foreground_window()
         if w.state() == "withdrawn":
             w.deiconify()
         w.lift()
         w.update_idletasks()
         if not w._overlay_ready:
-            winutil.make_overlay(w)
+            plat.make_overlay(w)
             w._overlay_ready = True
-        winutil.restore_foreground(prev)
+        plat.restore_foreground(prev)
 
     def _clamp(self, x: int, y: int, w: int, h: int) -> Tuple[int, int]:
-        vx, vy, vw, vh = winutil.virtual_screen()
+        vx, vy, vw, vh = plat.virtual_screen()
         return min(max(vx, x), vx + vw - w), min(max(vy, y), vy + vh - h)
 
     # ---- public API ------------------------------------------------------------------
@@ -185,12 +213,14 @@ class Overlay:
         if self.badge is not None:
             return
         self.badge = self._new_window(KEY)
+        key = KEY
         try:
             self.badge.attributes("-transparentcolor", KEY)
-        except tk.TclError:
-            pass
+        except tk.TclError:  # Linux (X11) has no colour keying: a white square behind the dot
+            key = SURFACE
+            self.badge.configure(bg=key)
         size = self.px(24)
-        c = tk.Canvas(self.badge, width=size, height=size, bg=KEY, highlightthickness=0, bd=0, cursor="hand2")
+        c = tk.Canvas(self.badge, width=size, height=size, bg=key, highlightthickness=0, bd=0, cursor="hand2")
         c.pack()
         c.bind("<Button-1>", lambda e: self.toggle_panel())
         self.badge_canvas = c
@@ -201,7 +231,7 @@ class Overlay:
         color = SEV_COLOR[max(f.severity for f in self.findings)]
         c.create_oval(1, 1, size - 1, size - 1, fill=color, outline=SURFACE, width=max(1, self.px(1.5)))
         n = len(self.findings)
-        c.create_text(size / 2, size / 2, text=str(n) if n < 10 else "9+", fill=SURFACE, font=("Segoe UI Semibold", 8))
+        c.create_text(size / 2, size / 2, text=str(n) if n < 10 else "9+", fill=SURFACE, font=self.font(8, bold=True))
 
     def _badge_position(self) -> Optional[Tuple[int, int]]:
         if not self.anchor:
@@ -261,11 +291,11 @@ class Overlay:
             bx, by = self.badge_xy
             size = self.px(24)
             x, y = bx + size - w, by - h - self.px(8)
-            vx, vy, vw, vh = winutil.virtual_screen()
+            vx, vy, vw, vh = plat.virtual_screen()
             if y < vy:
                 y = by + size + self.px(8)
         else:
-            left, top, right, bottom = winutil.work_area()
+            left, top, right, bottom = plat.work_area()
             x, y = right - w - self.px(24), bottom - h - self.px(24)
         x, y = self._clamp(x, y, w, h)
         if self.badge_xy:  # never cover the badge itself
@@ -391,7 +421,7 @@ class Overlay:
         tk.Label(top, text=f"{total} private detail{'s' if total != 1 else ''} in {what}", font=self.f_title,
                  fg=INK, bg=SURFACE, anchor="w").pack(side="left")
         # ✕ closes the report without doing anything, so another file can be chosen
-        close_x = tk.Label(top, text="✕", font=("Segoe UI", 11), fg=MUTED, bg=SURFACE, cursor="hand2",
+        close_x = tk.Label(top, text="✕", font=self.font(11), fg=MUTED, bg=SURFACE, cursor="hand2",
                            padx=px(4))
         close_x.pack(side="right")
         close_x.bind("<Button-1>", lambda e: self.close_file_report("dismissed"))
@@ -479,7 +509,7 @@ class Overlay:
             row = tk.Frame(holder, bg=SURFACE)
             row.pack(fill="x")
             # only the tick box toggles (a click elsewhere on the row used to untick it by accident)
-            box = tk.Label(row, text="☑", font=("Segoe UI Symbol", 12), fg=ACTION, bg=SURFACE, padx=px(3),
+            box = tk.Label(row, text="☑", font=self.font(12, symbol=True), fg=ACTION, bg=SURFACE, padx=px(3),
                            cursor="hand2")
             box.pack(side="left")
             tk.Frame(row, bg=SEV_COLOR[f.severity], width=px(3)).pack(side="left", fill="y", padx=(px(4), 0))
@@ -578,7 +608,7 @@ class Overlay:
                     if info["before"]:
                         tk.Label(line, text=info["before"], font=self.f_small, fg=INK, bg=bg,
                                  padx=0).pack(side="left")
-                    tk.Label(line, text=info["match"], font=("Segoe UI Semibold", 8), padx=px(1),
+                    tk.Label(line, text=info["match"], font=self.font(8, bold=True), padx=px(1),
                              fg=SEV_COLOR[occ.severity], bg="#FFF3CD").pack(side="left")
                     if info["after"]:
                         tk.Label(line, text=info["after"], font=self.f_small, fg=INK, bg=bg,
@@ -622,7 +652,7 @@ class Overlay:
                          font=self.f_small, fg=SEV_COLOR[MEDIUM], bg=SURFACE, anchor="w",
                          wraplength=px(360), justify="left").pack(fill="x")
 
-        wa_left, wa_top, wa_right, wa_bottom = winutil.work_area()
+        wa_left, wa_top, wa_right, wa_bottom = plat.work_area()
         max_h = max(px(160), min(px(420), int((wa_bottom - wa_top) * 0.55)))
         canvas.pack(side="left", fill="both", expand=True)
         scroll_note = tk.Label(body, text=f"Scroll to see all {total} details.", font=self.f_small, fg=MUTED,
@@ -658,7 +688,7 @@ class Overlay:
             fit()
             w.update_idletasks()
             ww, hh = w.winfo_reqwidth(), w.winfo_reqheight()
-            left, top, right, bottom = winutil.work_area()
+            left, top, right, bottom = plat.work_area()
             x, y = self._clamp(right - ww - px(24), bottom - hh - px(24), ww, hh)
             w.geometry(f"{ww}x{hh}+{x}+{y}")
 
@@ -702,7 +732,7 @@ class Overlay:
 
         w.update_idletasks()
         ww, hh = w.winfo_reqwidth(), w.winfo_reqheight()
-        left, top, right, bottom = winutil.work_area()
+        left, top, right, bottom = plat.work_area()
         x, y = self._clamp(right - ww - px(24), bottom - hh - px(24), ww, hh)
         self._show(w, x, y, ww, hh)
         self.report_win = w
@@ -757,7 +787,7 @@ class Overlay:
         self._button(row, "Not now", self._close_toast, filled=False).pack(side="right", padx=(0, px(8)))
         w.update_idletasks()
         ww, hh = w.winfo_reqwidth(), w.winfo_reqheight()
-        left, top, right, bottom = winutil.work_area()
+        left, top, right, bottom = plat.work_area()
         x, y = self._clamp(right - ww - px(24), bottom - hh - px(24), ww, hh)
         self._show(w, x, y, ww, hh)
         self.toast_win = w
@@ -780,7 +810,7 @@ class Overlay:
         top = tk.Frame(body, bg=SURFACE)
         top.pack(fill="x")
         tk.Label(top, text="Not-private items", font=self.f_title, fg=INK, bg=SURFACE).pack(side="left")
-        x = tk.Label(top, text="✕", font=("Segoe UI", 11), fg=MUTED, bg=SURFACE, cursor="hand2", padx=px(4))
+        x = tk.Label(top, text="✕", font=self.font(11), fg=MUTED, bg=SURFACE, cursor="hand2", padx=px(4))
         x.pack(side="right")
         tk.Label(body, text="SENSIQ doesn't flag these when you type. In files they're still listed, unticked. "
                             "Remove an item to have it flagged and replaced again.",
@@ -855,7 +885,7 @@ class Overlay:
         self._button(footer, "Close", close, filled=True).pack(side="right")
         w.update_idletasks()
         ww, hh = w.winfo_reqwidth(), w.winfo_reqheight()
-        left, top_, right, bottom = winutil.work_area()
+        left, top_, right, bottom = plat.work_area()
         xx, yy = self._clamp(right - ww - px(24), bottom - hh - px(24), ww, hh)
         self._show(w, xx, yy, ww, hh)
         self.np_win = w
@@ -875,7 +905,7 @@ class Overlay:
                  justify="left").pack(anchor="w", pady=(px(2), 0))
         w.update_idletasks()
         ww, hh = w.winfo_reqwidth(), w.winfo_reqheight()
-        left, top, right, bottom = winutil.work_area()
+        left, top, right, bottom = plat.work_area()
         x, y = self._clamp(right - ww - px(24), bottom - hh - px(24), ww, hh)
         self._show(w, x, y, ww, hh)
         self.checking_win = w
@@ -996,7 +1026,7 @@ class Overlay:
         self._update_status = status
         w.update_idletasks()
         ww, hh = w.winfo_reqwidth(), w.winfo_reqheight()
-        left, top, right, bottom = winutil.work_area()
+        left, top, right, bottom = plat.work_area()
         x, y = self._clamp(right - ww - px(24), bottom - hh - px(24), ww, hh)
         self._show(w, x, y, ww, hh)
         self.update_win = w
@@ -1038,7 +1068,7 @@ class Overlay:
             bx, by = self.badge_xy
             x, y = bx + px(24) - ww, by - hh - px(8)
         else:
-            left, top, right, bottom = winutil.work_area()
+            left, top, right, bottom = plat.work_area()
             x, y = right - ww - px(24), bottom - hh - px(24)
         x, y = self._clamp(x, y, ww, hh)
         self._show(w, x, y, ww, hh)
