@@ -484,3 +484,23 @@ def test_tray_host_check_never_complains_by_mistake(monkeypatch):
     monkeypatch.setattr(linuxdesktop.shutil, "which", lambda name: None)
     assert linuxdesktop.tray_host_present() is True
     assert linuxdesktop.enable_appindicator_extension() is False
+
+
+def _appindicator_ready():
+    if not os.environ.get("DISPLAY") or not shutil.which("dbus-run-session"):
+        return False
+    r = subprocess.run([sys.executable, "-c", "import gi; gi.require_version('AyatanaAppIndicator3', '0.1')"],
+                       capture_output=True)
+    return r.returncode == 0
+
+
+@pytest.mark.skipif(not _appindicator_ready(), reason="needs a display, dbus-run-session and AyatanaAppIndicator3")
+def test_tray_icon_registers_with_the_top_bar(home):
+    """The shield must reach Ubuntu's top bar (StatusNotifierWatcher). With pystray's
+    run_detached() the icon was created but never registered, so it stayed invisible."""
+    root = Path(__file__).resolve().parent.parent
+    helper = Path(__file__).resolve().parent / "sni_helper.py"
+    env = dict(os.environ, PYTHONPATH=str(root), GSETTINGS_BACKEND="memory")
+    r = subprocess.run(["dbus-run-session", "--", sys.executable, str(helper), sys.executable, "-m", "sensiq"],
+                       cwd=root, env=env, capture_output=True, text=True, timeout=120)
+    assert "REGISTERED" in r.stdout, r.stdout[-1500:] + r.stderr[-1500:]

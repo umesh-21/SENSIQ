@@ -113,18 +113,43 @@ class Tray:
 
     def start(self) -> None:
         try:
-            self.icon.run_detached()
+            if plat.IS_LINUX:
+                # GTK backends (AppIndicator) need GTK's main loop running: with run_detached()
+                # the icon is created but never registers with the top bar, so it stays invisible
+                import threading
+                threading.Thread(target=self._run_linux, name="Tray", daemon=True).start()
+            else:
+                self.icon.run_detached()
             log.info("tray icon started (%s)", type(self.icon).__module__)
         except Exception:   # no tray on this desktop: SENSIQ keeps working without the icon
             log.exception("tray icon couldn't start")
 
-    def refresh(self) -> None:
+    def _run_linux(self) -> None:
         try:
-            self.icon.icon = make_icon_image(64, active=self._enabled())
-            self.icon.title = self._title()
-            self.icon.update_menu()
+            self.icon.run()
         except Exception:
-            log.debug("tray refresh failed", exc_info=True)
+            log.exception("tray icon stopped because of an error")
+
+    def _in_tray_thread(self, fn) -> None:
+        """GTK must only be used from its own thread on Linux: hand the work to its loop."""
+        if plat.IS_LINUX and type(self.icon).__module__ != "pystray._xorg":
+            try:
+                from gi.repository import GLib
+                GLib.idle_add(lambda: (fn(), False)[1])
+                return
+            except Exception:
+                pass
+        fn()
+
+    def refresh(self) -> None:
+        def work():
+            try:
+                self.icon.icon = make_icon_image(64, active=self._enabled())
+                self.icon.title = self._title()
+                self.icon.update_menu()
+            except Exception:
+                log.debug("tray refresh failed", exc_info=True)
+        self._in_tray_thread(work)
 
     def notify(self, message: str) -> None:
         if plat.notify(message, APP_NAME):   # Linux: notify-send (AppIndicator has no balloons)
@@ -135,7 +160,9 @@ class Tray:
             log.debug("tray notify failed", exc_info=True)
 
     def stop(self) -> None:
-        try:
-            self.icon.stop()
-        except Exception:
-            pass
+        def work():
+            try:
+                self.icon.stop()
+            except Exception:
+                pass
+        self._in_tray_thread(work)
