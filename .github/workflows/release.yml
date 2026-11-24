@@ -58,6 +58,10 @@ jobs:
           if (-not (Test-Path $setup)) { throw "setup file missing: $setup" }
           $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
           "$hash  SENSIQ-Setup-$env:VERSION.exe" | Out-File "$setup.sha256" -Encoding ascii -NoNewline
+          # the same file under the old name, so PII Guard 1.2/1.3 (before the rename) find this update
+          $legacy = "dist/installer/PIIGuard-Setup-$env:VERSION.exe"
+          Copy-Item $setup $legacy -Force
+          "$hash  PIIGuard-Setup-$env:VERSION.exe" | Out-File "$legacy.sha256" -Encoding ascii -NoNewline
           $text = Get-Content CHANGELOG.md -Raw
           $m = [regex]::Match($text, "(?ms)^## \[$([regex]::Escape($env:VERSION))\][^\n]*\n(.*?)(?=^## \[|\z)")
           $notes = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "See CHANGELOG.md." }
@@ -70,7 +74,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $setup = "dist/installer/SENSIQ-Setup-$env:VERSION.exe"
-          $files = @($setup, "$setup.sha256")
+          $legacy = "dist/installer/PIIGuard-Setup-$env:VERSION.exe"
+          $files = @($setup, "$setup.sha256", $legacy, "$legacy.sha256")
           gh release view $env:TAG 2>$null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $env:TAG @files --clobber
