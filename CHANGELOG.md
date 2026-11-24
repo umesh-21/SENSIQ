@@ -3,6 +3,15 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
+## [1.6.0]
+
+### Fixed
+- **Names on ID-card photos are found reliably.** The patterned background of Aadhaar cards produces OCR noise that could stop the name model from recognising a clear name (e.g. "Ramesh Kumar N P"). Short texts such as cards, screenshots and forms are now also checked a few lines at a time, which adds about 0.1 s.
+- **Background noise isn't flagged as a name** any more (e.g. "TTtTR").
+
+### Changed
+- **Updates are only offered, never installed by themselves.** You get a Windows notification and an **Update available…** item in the tray menu; nothing is installed until you click **Update now**.
+
 ## [1.5.0]
 
 ### Nothing is skipped without you seeing it

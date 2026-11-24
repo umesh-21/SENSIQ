@@ -70,9 +70,39 @@ class NerModel:
         log.info("NER model loaded: %s (%d labels)", onnx_path, len(self.id2label))
 
     # ---- public -----------------------------------------------------------------
+    WINDOW_TEXT_MAX = 3000  # short texts (ID cards, screenshots, forms) also get the line-window pass
+
+    def _line_windows(self, text: str) -> Iterator[Tuple[int, str]]:
+        """Each non-blank line with the line above and below it. The model reads a chunk as a
+        whole, so OCR noise from a card's background art several lines away can flip a clear
+        name ("Sarathkumar N P") to "not a name"; a small window doesn't see that noise."""
+        spans = []
+        pos = 0
+        for line in text.splitlines(keepends=True):
+            if line.strip():
+                spans.append((pos, pos + len(line)))
+            pos += len(line)
+        seen = set()
+        for i in range(len(spans)):
+            s, e = spans[max(0, i - 1)][0], spans[min(len(spans) - 1, i + 1)][1]
+            if (s, e) not in seen:
+                seen.add((s, e))
+                yield s, text[s:e]
+
     def detect(self, text: str) -> List[Finding]:
+        chunks = list(self._chunks(text))
+        if len(text) <= self.WINDOW_TEXT_MAX and len(chunks) and text.count("\n") >= 3:
+            chunks += list(self._line_windows(text))
+        best: dict = {}
+        for f in self._detect_chunks(chunks):
+            key = (f.start, f.end, f.kind)
+            if key not in best or f.score > best[key].score:
+                best[key] = f
+        return sorted(best.values(), key=lambda f: f.start)
+
+    def _detect_chunks(self, chunks) -> List[Finding]:
         out: List[Finding] = []
-        for offset, chunk in self._chunks(text):
+        for offset, chunk in chunks:
             # The model is cased: it looks for capital letters. Text typed all in lowercase
             # ("rahul sharma from pune") or printed in CAPITALS (ID cards) is re-capitalised
             # word by word first, and only confident results are kept from that pass.
@@ -88,7 +118,7 @@ class NerModel:
                         continue
                 s, e = self._trim_edges(chunk, s, e)
                 value = chunk[s:e]
-                if len(value.strip()) < 2:
+                if len(value.strip()) < 2 or not self._wordlike(value):
                     continue
                 out.append(Finding(offset + s, offset + e, kind, value, float(score), "ner"))
         return out
@@ -117,6 +147,20 @@ class NerModel:
         if not words:
             return s, s
         return words[0][0], words[-1][1]
+
+    _WORD_SHAPES = re.compile(
+        r"^(?:[A-Z]?[a-z]+|[A-Z]+|(?:Mc|Mac|O'|D'|De|Di|Da|La|Le|Van|Von)?[A-Z][a-z]+(?:[A-Z][a-z]+)?)$")
+
+    @classmethod
+    def _wordlike(cls, value: str) -> bool:
+        """OCR noise from patterned backgrounds ("TTtTR", "Hrmz") is not a name or place: every
+        word of 3+ letters needs a vowel and a normal shape (Rahul, RAHUL, rahul, McDonald)."""
+        for w in re.findall(r"[A-Za-z']+", value):
+            if len(w) < 3:
+                continue  # initials, "Mr", "N P"
+            if not re.search(r"[aeiouyAEIOUY]", w) or not cls._WORD_SHAPES.match(w):
+                return False
+        return True
 
     RECASED_MIN = {"PER": 0.90, "LOC": 0.98, "ORG": 0.98}
     # Field labels printed on ID cards and forms; never a name on their own.

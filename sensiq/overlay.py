@@ -953,7 +953,8 @@ class Overlay:
         tk.Label(body, text=f"SENSIQ {info.version} is available", font=self.f_title, fg=INK, bg=SURFACE,
                  anchor="w").pack(fill="x")
         size = f" · {info.setup_size / 1e6:.0f} MB download" if info.setup_size else ""
-        tk.Label(body, text=f"You have version {current}{size}", font=self.f_small, fg=MUTED, bg=SURFACE,
+        tk.Label(body, text=f"You have version {current}{size}. Nothing is installed unless you click "
+                            "Update now.", font=self.f_small, fg=MUTED, bg=SURFACE, wraplength=px(420), justify="left",
                  anchor="w").pack(fill="x", pady=(px(2), px(8)))
         tk.Label(body, text="What's new", font=self.f_label, fg=INK, bg=SURFACE, anchor="w").pack(fill="x")
         frame = tk.Frame(body, bg=SURFACE, highlightthickness=1, highlightbackground=LINE)

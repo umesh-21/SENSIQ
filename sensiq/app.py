@@ -103,6 +103,7 @@ class App:
         except Exception:
             log.exception("Update checks unavailable")
         self.updating = False
+        self.update_info = None   # an update found but not installed (tray: "Update available…")
         self.tray = None
         if not args.no_tray:
             try:
@@ -236,9 +237,15 @@ class App:
         elif kind == "update_available":
             _, info, manual = ev
             if not self.updating:
-                self.overlay.update_card(info, __version__, on_update=lambda i=info: self._start_update(i),
-                                         on_skip=lambda i=info: self._skip_update(i),
-                                         on_page=lambda i=info: winutil.open_path(i.page))
+                # never installs by itself: a notification, the card, and a tray item to open it again
+                first = getattr(self, "update_info", None) is None or self.update_info.version != info.version
+                self.update_info = info
+                if first and not manual:
+                    self._notify(f"Update found: SENSIQ {info.version} is available. Nothing is installed "
+                                 "unless you choose Update now.")
+                self._show_update_card()
+                if self.tray:
+                    self.tray.refresh()
         elif kind == "update_none":
             self.overlay.toast(f"You have the latest version of SENSIQ ({__version__}).", "ok", ms=4000)
         elif kind == "update_failed":
@@ -403,7 +410,18 @@ class App:
                 self.events.put(("update_failed", str(exc)))
         threading.Thread(target=work, name="update-download", daemon=True).start()
 
+    def _show_update_card(self) -> None:
+        info = getattr(self, "update_info", None)
+        if info is None:
+            return
+        self.overlay.update_card(info, __version__, on_update=lambda i=info: self._start_update(i),
+                                 on_skip=lambda i=info: self._skip_update(i),
+                                 on_page=lambda i=info: winutil.open_path(i.page))
+
     def _skip_update(self, info) -> None:
+        self.update_info = None
+        if self.tray:
+            self.tray.refresh()
         self.config.data.setdefault("updates", {})["skip_version"] = info.version
         self.config.save()
         self.overlay.toast(f"Version {info.version} skipped. Tray → Check for updates now still finds it.",
@@ -534,6 +552,8 @@ class App:
             self._change_safe_copies_folder()
         elif action == "safe_default":
             self._default_safe_copies_folder()
+        elif action == "show_update":
+            self._show_update_card()
         elif action == "check_updates":
             self.overlay.toast("Checking GitHub for a new version…", "info", ms=3000)
             self._check_updates_now()

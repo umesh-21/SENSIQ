@@ -30,6 +30,10 @@ class Tray:
         except Exception:
             return True
 
+    def _update_version(self) -> str:
+        info = getattr(self.app, "update_info", None)
+        return info.version if info is not None else ""
+
     def _title(self) -> str:
         return f"{APP_NAME}: {'on' if self._enabled() else 'PAUSED (right-click to resume)'}"
 
@@ -57,6 +61,8 @@ class Tray:
                  checked=lambda item: bool(self.app.config.data.get("file_scan", {}).get("opened_files", False))),
             Item("Read Hindi in images (install)…", self._post("add_hindi"),
                  visible=lambda item: not self._has_hindi()),
+            Item(lambda item: f"Update available: SENSIQ {self._update_version()}… (see what's new)",
+                 self._post("show_update"), visible=lambda item: bool(self._update_version())),
             Item("Check for updates now", self._post("check_updates")),
             Item("Check for updates automatically", self._post("auto_updates"),
                  checked=lambda item: bool(self.app.config.data.get("updates", {}).get("check", True))),

@@ -38,7 +38,7 @@ Requirements: Windows 10 or 11, 64-bit.
 
 ## Updates
 
-SENSIQ checks this repository's [Releases](https://github.com/umesh-21/SENSIQ/releases) about 90 seconds after it starts and then every 12 hours. When a newer version is published it shows a card with:
+SENSIQ checks this repository's [Releases](https://github.com/umesh-21/SENSIQ/releases) about 90 seconds after it starts and then every 12 hours. **SENSIQ never updates by itself.** When a newer version is published, Windows shows a notification ("Update found: SENSIQ x.y.z is available"), the tray menu gets an **Update available…** item, and a card opens with:
 
 - the new version number and download size;
 - **What's new**: that version's notes from [CHANGELOG.md](CHANGELOG.md);
