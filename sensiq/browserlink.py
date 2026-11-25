@@ -35,10 +35,14 @@ BROWSER_KEYS = [
     r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
     r"Software\Chromium\NativeMessagingHosts",
 ]
-LINUX_BROWSER_DIRS = [  # ~/.config/<this>/NativeMessagingHosts
-    "google-chrome", "google-chrome-beta", "chromium", "BraveSoftware/Brave-Browser",
-    "microsoft-edge", "vivaldi",
-]
+LINUX_BROWSER_DIRS = {  # ~/.config/<this>/NativeMessagingHosts: the browser's programs
+    "google-chrome": ("google-chrome", "google-chrome-stable"),
+    "google-chrome-beta": ("google-chrome-beta",),
+    "chromium": ("chromium", "chromium-browser"),
+    "BraveSoftware/Brave-Browser": ("brave-browser", "brave-browser-stable", "brave"),
+    "microsoft-edge": ("microsoft-edge", "microsoft-edge-stable"),
+    "vivaldi": ("vivaldi", "vivaldi-stable"),
+}
 CHUNK_TO_BROWSER = 600 * 1024   # bytes per reply chunk (stays under the browser's 1 MB limit once base64'd)
 
 
@@ -76,9 +80,11 @@ def _manifest() -> str:
 
 
 def _linux_host_dirs(existing_only: bool = True) -> list:
+    """Browsers that are installed (their program is there) or have been used (settings folder):
+    registered even before their first start, so the extension works there straight away."""
     base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-    return [base / d / "NativeMessagingHosts" for d in LINUX_BROWSER_DIRS
-            if not existing_only or (base / d).is_dir()]
+    return [base / d / "NativeMessagingHosts" for d, programs in LINUX_BROWSER_DIRS.items()
+            if not existing_only or (base / d).is_dir() or any(shutil.which(p) for p in programs)]
 
 
 def register_host() -> bool:

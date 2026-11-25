@@ -110,7 +110,10 @@ def test_native_host_manifests(home):
     chrome = home / "config" / "google-chrome" / "NativeMessagingHosts" / "com.sensiq.host.json"
     brave = home / "config" / "BraveSoftware" / "Brave-Browser" / "NativeMessagingHosts" / "com.sensiq.host.json"
     m = json.loads(chrome.read_text())
-    assert brave.exists() and not (home / "config" / "chromium").exists()   # only browsers that are installed
+    assert brave.exists()
+    import shutil as _sh
+    if not any(_sh.which(p) for p in ("chromium", "chromium-browser")):
+        assert not (home / "config" / "chromium").exists()   # only browsers that are installed or used
     assert m["name"] == "com.sensiq.host" and m["type"] == "stdio"
     assert m["allowed_origins"] == [f"chrome-extension://{browserlink.EXTENSION_ID}/"]
     launcher = Path(m["path"])
@@ -634,3 +637,15 @@ def test_rich_text_boxes_in_browsers_are_read_through():
     assert locate_piece(pieces, text.index("kashyap"), 15) is None          # spans two paragraphs
     plain = _FakeAcc("text", "just text")
     assert flatten_text(plain, 1000) == ("just text", [(0, plain, 0, 9)])
+
+
+def test_browser_installed_but_never_opened_is_registered(home, tmp_path, monkeypatch):
+    """Chrome installed but never started has no settings folder yet: register it anyway."""
+    from sensiq import browserlink
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "google-chrome").write_text("#!/bin/sh\n")
+    (bin_dir / "google-chrome").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    assert browserlink.register_host()
+    assert (home / "config" / "google-chrome" / "NativeMessagingHosts" / "com.sensiq.host.json").exists()
