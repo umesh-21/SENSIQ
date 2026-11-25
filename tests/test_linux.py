@@ -571,3 +571,66 @@ def test_typing_in_chrome_based_browsers(home, tmp_path, monkeypatch):
     assert (home / "data" / "applications" / "brave-browser.desktop").read_text().count("--force-renderer") == 2
     linuxdesktop.disable_browser_typing()
     assert not (home / "data" / "applications" / "brave-browser.desktop").exists() and mine.exists()
+
+
+class _FakeText:
+    def __init__(self, acc):
+        self.acc = acc
+
+    def get_character_count(self):
+        return len(self.acc.raw)
+
+    def get_text(self, a, b):
+        return self.acc.raw[a:b]
+
+
+class _FakeLink:
+    def __init__(self, child):
+        self.child = child
+
+    def get_object(self, i):
+        return self.child
+
+
+class _FakeHyper:
+    def __init__(self, acc):
+        self.acc = acc
+
+    def get_link_index(self, offset):
+        return [i for i, ch in enumerate(self.acc.raw) if ch == "￼"].index(offset)
+
+    def get_link(self, k):
+        return _FakeLink(self.acc.children[k])
+
+
+class _FakeAcc:
+    def __init__(self, role, raw, children=()):
+        self.role, self.raw, self.children = role, raw, list(children)
+
+    def get_text_iface(self):
+        return _FakeText(self)
+
+    def get_hypertext_iface(self):
+        return _FakeHyper(self) if self.children else None
+
+    def get_role_name(self):
+        return self.role
+
+
+def test_rich_text_boxes_in_browsers_are_read_through():
+    """Chrome-based browsers describe claude.ai's / Gmail's box as placeholders with the words in
+    child paragraphs: SENSIQ must read the words, and know which paragraph holds each value."""
+    from sensiq.capture_linux import flatten_text, locate_piece
+    p1 = _FakeAcc("paragraph", "hi im umesh kashyap")
+    link = _FakeAcc("link", "4918 3205 7615")
+    p2 = _FakeAcc("paragraph", "aadhaar ￼ ok", [link])
+    box = _FakeAcc("entry", "￼￼", [p1, p2])
+    text, pieces = flatten_text(box, 1000)
+    assert text == "hi im umesh kashyap\naadhaar 4918 3205 7615 ok"
+    owner, off = locate_piece(pieces, text.index("umesh"), 5)
+    assert owner is p1 and off == p1.raw.index("umesh")
+    owner, off = locate_piece(pieces, text.index("4918"), 14)
+    assert owner is link and off == 0
+    assert locate_piece(pieces, text.index("kashyap"), 15) is None          # spans two paragraphs
+    plain = _FakeAcc("text", "just text")
+    assert flatten_text(plain, 1000) == ("just text", [(0, plain, 0, 9)])

@@ -73,6 +73,74 @@ def corner_rect() -> Tuple[int, int, int, int]:
     return (right - 380, bottom - 150, right - 24, bottom - 24)
 
 
+OBJECT_CHAR = "\ufffc"   # stands for a child object in an AT-SPI text (a paragraph, a link...)
+BLOCK_ROLES = {"paragraph", "section", "heading", "list item", "list", "block quote", "form", "panel",
+               "table row", "table cell", "article"}
+
+
+def flatten_text(acc, limit: int, depth: int = 0):
+    """The words of a rich text box. Chrome-based browsers describe a box like claude.ai's or
+    Gmail's as one placeholder character per paragraph, with the words in child objects:
+    follow each placeholder (AT-SPI hypertext links) to its child. Returns (text, pieces) with
+    pieces = [(start in text, object holding the words, offset in that object, length)]."""
+    t = acc.get_text_iface()
+    if t is None:
+        return "", []
+    raw = t.get_text(0, min(t.get_character_count(), limit)) or ""
+    if OBJECT_CHAR not in raw or depth > 8:
+        return raw, [(0, acc, 0, len(raw))]
+    hyper = acc.get_hypertext_iface()
+    parts: list = []
+    pieces: list = []
+    pos = 0
+
+    def add(text, owner, offset):
+        nonlocal pos
+        if text:
+            parts.append(text)
+            if owner is not None:
+                pieces.append((pos, owner, offset, len(text)))
+            pos += len(text)
+
+    start = 0
+    for i, ch in enumerate(raw):
+        if ch != OBJECT_CHAR:
+            continue
+        add(raw[start:i], acc, start)
+        child = None
+        try:
+            k = hyper.get_link_index(i) if hyper is not None else -1
+            link = hyper.get_link(k) if k >= 0 else None
+            child = link.get_object(0) if link is not None else None
+        except Exception:
+            child = None
+        if child is not None:
+            try:
+                block = child.get_role_name() in BLOCK_ROLES
+            except Exception:
+                block = False
+            if block and pos and not parts[-1].endswith("\n"):
+                add("\n", None, 0)
+            text, sub = flatten_text(child, max(0, limit - pos), depth + 1)
+            for (s0, owner, off, n) in sub:
+                pieces.append((pos + s0, owner, off, n))
+            parts.append(text)
+            pos += len(text)
+        start = i + 1
+        if pos >= limit:
+            break
+    add(raw[start:], acc, start)
+    return "".join(parts)[:limit], pieces
+
+
+def locate_piece(pieces, idx: int, length: int):
+    """(object, offset in it) holding text[idx:idx+length] in one piece, else None."""
+    for s0, owner, off, n in pieces:
+        if s0 <= idx and idx + length <= s0 + n:
+            return owner, off + (idx - s0)
+    return None
+
+
 class FocusWatcher(threading.Thread):
     POLL_TICK = 0.05   # how often AT-SPI events are handled
 
@@ -88,6 +156,7 @@ class FocusWatcher(threading.Thread):
         self._last_sig = None
         self._control = None
         self._process = ""
+        self._pieces: list = []
         self.wayland = plat.session_type() == "wayland" if hasattr(plat, "session_type") else False
 
     # ---- thread loop ----------------------------------------------------------------
@@ -103,6 +172,7 @@ class FocusWatcher(threading.Thread):
         self.Atspi = Atspi
         ctx = GLib.MainContext.new()
         ctx.push_thread_default()
+        self._ctx = ctx
         try:
             Atspi.init()
             # after init(): init() attaches AT-SPI's D-Bus connection to the default context,
@@ -178,12 +248,11 @@ class FocusWatcher(threading.Thread):
         states = acc.get_state_set()
         if not states.contains(Atspi.StateType.EDITABLE) or states.contains(Atspi.StateType.DEFUNCT):
             return None
-        text_iface = acc.get_text_iface()
-        if text_iface is None:
+        if acc.get_text_iface() is None:
             return None
         limit = int(self.config.data.get("max_chars", 20000))
-        count = text_iface.get_character_count()
-        return text_iface.get_text(0, min(count, limit)) or ""
+        text, self._pieces = flatten_text(acc, limit)
+        return text
 
     def _rect(self, acc) -> Tuple[int, int, int, int]:
         if not self.wayland:
@@ -253,50 +322,77 @@ class FocusWatcher(threading.Thread):
         if idx < 0:
             return False
         before = text.count(old)
-        editable = acc.get_editable_text_iface()
+        spot = locate_piece(getattr(self, "_pieces", []), idx, len(old))
+        if spot is None:
+            return False                # the value runs across two paragraphs or links
+        owner, local = spot
+        editable = owner.get_editable_text_iface()
         if editable is not None:
             try:
-                if editable.delete_text(idx, idx + len(old)) and editable.insert_text(idx, new, len(new)):
+                if editable.delete_text(local, local + len(old)) and editable.insert_text(local, new, len(new)):
                     if self._gone(acc, old, before):
                         return True
             except Exception:
                 log.debug("EditableText failed", exc_info=True)
-        return self._via_paste(acc, idx, old, new, before)
+        return self._via_paste(acc, owner, local, old, new, before)
 
     def _gone(self, acc, old: str, before: int) -> bool:
-        for _ in range(8):
-            if (self._editable_text(acc) or "").count(old) < before:
-                return True
-            time.sleep(0.05)
+        """Did the value disappear? Browsers may replace the box's accessible object when its
+        text changes; then the object they focus next is read instead."""
+        for _ in range(16):
+            ctx = getattr(self, "_ctx", None)
+            n = 0
+            while ctx is not None and ctx.pending() and n < 100:
+                ctx.iteration(False)
+                n += 1
+            for target in (acc, self._focus):
+                if target is None:
+                    continue
+                try:
+                    text = self._editable_text(target)
+                except Exception:
+                    continue          # gone; try the newly focused one
+                if text is not None and text.count(old) < before:
+                    if target is not acc:
+                        self._control = target
+                    return True
+            time.sleep(0.06)
         return False
 
-    def _via_paste(self, acc, idx: int, old: str, new: str, before: int) -> bool:
-        """Select the value and paste over it (Ctrl+V through AT-SPI; X11 sessions only)."""
+    def _via_paste(self, acc, owner, idx: int, old: str, new: str, before: int) -> bool:
+        """Select the value (in the paragraph holding it) and paste over it (Ctrl+V through
+        AT-SPI; X11 sessions only)."""
         if self.wayland:
             return False
         Atspi = self.Atspi
-        text_iface = acc.get_text_iface()
+        text_iface = owner.get_text_iface()
         if text_iface is None:
             return False
         try:
             comp = acc.get_component_iface()
-            if comp is not None:
-                comp.grab_focus()
+            focused = comp.grab_focus() if comp is not None else None
+            time.sleep(0.05)
             if text_iface.get_n_selections() > 0:
-                text_iface.set_selection(0, idx, idx + len(old))
+                selected = text_iface.set_selection(0, idx, idx + len(old))
             else:
-                text_iface.add_selection(idx, idx + len(old))
+                selected = text_iface.add_selection(idx, idx + len(old))
         except Exception:
+            log.debug("paste: selecting the value failed", exc_info=True)
             return False
+        log.debug("paste: focus=%s select=%s (in %s at %d+%d)", focused, selected, owner.get_role_name(), idx, len(old))
         time.sleep(0.05)
         if not plat.set_clipboard_text(new):
+            log.debug("paste: clipboard not set")
             return False
         time.sleep(0.1)
         try:
             ctrl = 37  # X11 keycode of the left Ctrl key
-            Atspi.generate_keyboard_event(ctrl, None, Atspi.KeySynthType.PRESS)
-            Atspi.generate_keyboard_event(0x76, None, Atspi.KeySynthType.SYM)  # keysym 'v'
-            Atspi.generate_keyboard_event(ctrl, None, Atspi.KeySynthType.RELEASE)
+            keys = (Atspi.generate_keyboard_event(ctrl, None, Atspi.KeySynthType.PRESS),
+                    Atspi.generate_keyboard_event(0x76, None, Atspi.KeySynthType.SYM),  # keysym 'v'
+                    Atspi.generate_keyboard_event(ctrl, None, Atspi.KeySynthType.RELEASE))
         except Exception:
+            log.debug("paste: Ctrl+V couldn't be sent", exc_info=True)
             return False
-        return self._gone(acc, old, before)
+        gone = self._gone(acc, old, before)
+        log.debug("paste: keys=%s replaced=%s", keys, gone)
+        return gone
