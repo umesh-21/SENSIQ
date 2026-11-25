@@ -3,6 +3,21 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
+## [1.7.1]
+
+### Linux: fixes from the first real-desktop tests
+- **The shield now shows in the top bar.** In 1.7.0 SENSIQ ran but its icon never appeared.
+- **Cards appear on your screen.** On some PCs the report card opened outside the visible screen, so checking a file seemed to do nothing.
+- **SENSIQ starts by itself when you sign in**, and if the top bar can't show its shield, it tells you what to do.
+- **Typing checks work in Brave and Chrome**, including chat boxes like claude.ai and Gmail. When you turn typing checks on, SENSIQ also sets up Brave and Chrome; close the browser fully and open it again from the app list. The first start offers typing checks with a **Turn on** button.
+- **Uploads in the browser are checked on more websites:** upload buttons that sites hide or build into their own controls (Gmail, WhatsApp Web, claude.ai…) now go through SENSIQ too, and tabs that were already open are protected as soon as the extension is added. After updating, click reload on SENSIQ in `brave://extensions` / `chrome://extensions`.
+- Chrome is set up for the extension even before its first start.
+
+### Fixed (Windows and Linux)
+- The word "Aadhaar" before a number is no longer replaced as if it were a person's name.
+- File contents never reach the log, even when SENSIQ runs with `--debug`.
+- Opening SENSIQ again while it's running shows that it's on, instead of an "already running" box.
+
 ## [1.7.0]
 
 ### SENSIQ for Linux (Ubuntu 22.04 and 24.04)
