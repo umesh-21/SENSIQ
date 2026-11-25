@@ -96,3 +96,81 @@ def install_files_script(force: bool = False) -> bool:
     target.write_text(text, encoding="utf-8")
     target.chmod(0o755)
     return True
+
+
+# ---- typing checks in Chrome-based browsers ---------------------------------------------------
+# Brave, Chrome, Edge and Chromium share what's typed in web pages with the accessibility service
+# only when started with this switch (Ubuntu's accessibility setting alone isn't enough).
+A11Y_FLAG = "--force-renderer-accessibility"
+BROWSER_LAUNCHERS = ("brave-browser.desktop", "google-chrome.desktop", "microsoft-edge.desktop",
+                     "chromium.desktop", "chromium-browser.desktop", "vivaldi-stable.desktop")
+LAUNCHER_MARK = "X-SENSIQ-Typing=true"
+
+
+def _app_dirs() -> list:
+    dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    return [Path(d) / "applications" for d in dirs.split(":") if d] + [Path("/var/lib/snapd/desktop/applications")]
+
+
+def _user_apps_dir() -> Path:
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(base) / "applications"
+
+
+def _with_flag(exec_line: str) -> str:
+    """'Exec=/usr/bin/brave-browser-stable %U' -> 'Exec=/usr/bin/brave-browser-stable --force-renderer-accessibility %U'"""
+    key, _, cmd = exec_line.partition("=")
+    cmd = cmd.strip()
+    if not cmd or A11Y_FLAG in cmd:
+        return exec_line
+    if cmd.startswith('"'):                       # a quoted program path
+        end = cmd.find('"', 1) + 1 or len(cmd)
+    else:
+        end = cmd.find(" ") if " " in cmd else len(cmd)
+    return f"{key}={cmd[:end]} {A11Y_FLAG}{cmd[end:]}"
+
+
+def enable_browser_typing() -> list:
+    """Per-user copies of the installed Chrome-based browsers' launchers, with the switch added.
+    Returns the browsers changed (their names). A launcher the user customised is left alone."""
+    changed = []
+    user_dir = _user_apps_dir()
+    for name in BROWSER_LAUNCHERS:
+        src = next((d / name for d in _app_dirs() if (d / name).is_file()), None)
+        if src is None:
+            continue
+        target = user_dir / name
+        if target.exists():
+            try:
+                old = target.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if LAUNCHER_MARK not in old:
+                continue    # the user's own launcher
+        try:
+            lines = src.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        out, browser = [], name
+        for line in lines:
+            if line.startswith("Exec="):
+                line = _with_flag(line)
+            elif line.startswith("Name=") and browser == name:
+                browser = line[5:]
+            out.append(line)
+            if line.strip() == "[Desktop Entry]":
+                out.append(LAUNCHER_MARK)
+        user_dir.mkdir(parents=True, exist_ok=True)
+        target.write_text("\n".join(out) + "\n", encoding="utf-8")
+        changed.append(browser)
+    return changed
+
+
+def disable_browser_typing() -> None:
+    for name in BROWSER_LAUNCHERS:
+        target = _user_apps_dir() / name
+        try:
+            if LAUNCHER_MARK in target.read_text(encoding="utf-8"):
+                target.unlink()
+        except OSError:
+            pass

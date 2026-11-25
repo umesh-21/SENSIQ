@@ -54,4 +54,18 @@ chrome.runtime.onConnect.addListener((port) => {
 
 // Keep the app link open while the browser runs, so checks start instantly.
 chrome.runtime.onStartup.addListener(() => nativePort());
-chrome.runtime.onInstalled.addListener(() => nativePort());
+chrome.runtime.onInstalled.addListener(() => { nativePort(); protectOpenTabs(); });
+
+// Pages already open when the extension is installed, updated or reloaded don't get its
+// scripts until they're reloaded, so uploads there went unchecked: add them now.
+async function protectOpenTabs() {
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }); } catch (e) { return; }
+  for (const tab of tabs) {
+    const target = { tabId: tab.id, allFrames: true };
+    try {
+      await chrome.scripting.executeScript({ target, files: ["page.js"], world: "MAIN" });
+      await chrome.scripting.executeScript({ target, files: ["content.js"] });
+    } catch (e) { /* pages the browser protects (store, settings): nothing to do */ }
+  }
+}

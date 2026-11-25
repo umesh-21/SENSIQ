@@ -752,10 +752,18 @@ Brave: <code>brave://extensions</code>).{linux_note}</li>
     def _typing_setup(self) -> None:
         """Linux: typing checks read text fields through the desktop's accessibility service."""
         from .capture_linux import enable_accessibility
+        from .linuxdesktop import enable_browser_typing
         if enable_accessibility():
+            try:
+                browsers = enable_browser_typing()
+            except Exception:
+                log.debug("browser launchers not changed", exc_info=True)
+                browsers = []
+            also = (f" Close {', '.join(browsers)} completely and open it again from the app list." if browsers else "")
             self.overlay.toast("Typing checks are turned on. Sign out and back in (or restart your apps) "
-                               "so apps start sharing their text boxes with SENSIQ. This is a test version: "
-                               "it works best in GNOME apps, LibreOffice, Chrome and Firefox.", "ok", ms=12000)
+                               "so apps start sharing their text boxes with SENSIQ." + also +
+                               " This is a test version: it works best in GNOME apps, LibreOffice, "
+                               "Brave, Chrome and Firefox.", "ok", ms=15000)
         else:
             self.overlay.toast("Couldn't turn on typing checks: this desktop has no accessibility service.",
                                "warn", ms=8000)

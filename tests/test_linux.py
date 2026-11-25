@@ -544,3 +544,30 @@ def test_debug_log_never_holds_document_words(home):
                 root.removeHandler(h)
                 h.close()
         root.setLevel(logging.WARNING)
+
+
+def test_typing_in_chrome_based_browsers(home, tmp_path, monkeypatch):
+    """Brave/Chrome share web pages' text boxes only with --force-renderer-accessibility: SENSIQ
+    adds it to a per-user copy of their launchers (and leaves a launcher the user made alone)."""
+    from sensiq import linuxdesktop
+    system = tmp_path / "share"
+    (system / "applications").mkdir(parents=True)
+    (system / "applications" / "brave-browser.desktop").write_text(
+        "[Desktop Entry]\nName=Brave Web Browser\nExec=/usr/bin/brave-browser-stable %U\n"
+        "[Desktop Action new-window]\nExec=/usr/bin/brave-browser-stable\n")
+    (system / "applications" / "google-chrome.desktop").write_text(
+        "[Desktop Entry]\nName=Google Chrome\nExec=\"/opt/google/chrome/google chrome\" --incognito %U\n")
+    monkeypatch.setenv("XDG_DATA_DIRS", str(system))
+    mine = home / "data" / "applications" / "google-chrome.desktop"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("[Desktop Entry]\nExec=my-own-chrome\n")
+    assert linuxdesktop.enable_browser_typing() == ["Brave Web Browser"]
+    brave = (home / "data" / "applications" / "brave-browser.desktop").read_text()
+    assert "Exec=/usr/bin/brave-browser-stable --force-renderer-accessibility %U" in brave
+    assert "Exec=/usr/bin/brave-browser-stable --force-renderer-accessibility\n" in brave
+    assert mine.read_text() == "[Desktop Entry]\nExec=my-own-chrome\n"          # untouched
+    assert linuxdesktop._with_flag('Exec="/opt/a b/chrome" %U') == 'Exec="/opt/a b/chrome" --force-renderer-accessibility %U'
+    assert linuxdesktop.enable_browser_typing() == ["Brave Web Browser"]          # repeat: no double flag
+    assert (home / "data" / "applications" / "brave-browser.desktop").read_text().count("--force-renderer") == 2
+    linuxdesktop.disable_browser_typing()
+    assert not (home / "data" / "applications" / "brave-browser.desktop").exists() and mine.exists()

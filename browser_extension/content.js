@@ -2,8 +2,11 @@
 // has the SENSIQ app on this computer check them, then gives the page either the
 // original or the safe copy you chose. If the app isn't running, nothing is held.
 (() => {
-  if (window.__sensiqContent) return;
-  window.__sensiqContent = true;
+  // After the extension is reloaded or updated, the copy of this script left in an open page is
+  // cut off from the extension: it steps aside and the fresh copy takes over.
+  const alive = () => { try { return !!chrome.runtime.id; } catch (e) { return false; } };
+  if (window.__sensiqContent && window.__sensiqContent()) return;
+  window.__sensiqContent = alive;
 
   const CHUNK = 3 * 1024 * 1024;        // bytes per message to the app
   const WAIT_MS = 10 * 60 * 1000;       // longest a page waits for your choice
@@ -97,6 +100,7 @@
   const held = new WeakSet();
   async function onInputEvent(ev) {
     const el = ev.target;
+    if (!alive()) return;
     if (ours(ev) || !(el instanceof HTMLInputElement) || el.type !== "file") return;
     if (!el.files || el.files.length === 0) return;
     ev.stopImmediatePropagation();
@@ -118,6 +122,7 @@
 
   // ---- drag and drop -----------------------------------------------------------------
   window.addEventListener("drop", async (ev) => {
+    if (!alive()) return;
     if (ours(ev) || !ev.dataTransfer || ev.dataTransfer.files.length === 0) return;
     const target = ev.target;
     const original = listOf(ev.dataTransfer.files);
@@ -133,6 +138,7 @@
 
   // ---- paste ----------------------------------------------------------------------------
   window.addEventListener("paste", async (ev) => {
+    if (!alive()) return;
     if (ours(ev) || !ev.clipboardData || ev.clipboardData.files.length === 0) return;
     const target = ev.target;
     const original = listOf(ev.clipboardData.files);
@@ -148,6 +154,7 @@
   // ---- sites using the File System Access picker (page.js asks us) --------------------
   window.addEventListener("message", async (ev) => {
     const m = ev.data;
+    if (!alive()) return;
     if (!m || m.__sensiqAsk !== true || !Array.isArray(m.files)) return;
     window.postMessage({ __sensiqAck: true, id: m.id }, "*");
     const r = await check(m.files, m.source === "upload" ? "upload" : "picker");
