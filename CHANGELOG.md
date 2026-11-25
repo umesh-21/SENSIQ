@@ -3,6 +3,12 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
+## [Unreleased]
+
+### Linux
+- **Installed a new version by hand while SENSIQ was running?** It now notices within a minute and restarts into the new version, instead of still offering the update.
+- **If Ubuntu can't show its password window** for an update, SENSIQ says so and shows the one-line command to install it yourself.
+
 ## [1.7.2]
 
 - **The Linux package is back:** 1.7.1's Linux download was missing because a component it uses changed. This version contains all of 1.7.1's fixes below (the shield in the top bar, cards on your screen, typing checks in Brave and Chrome, more uploads checked in the browser). Nothing else changed; on Windows it is the same as 1.7.1.
