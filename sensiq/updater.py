@@ -182,7 +182,11 @@ def install_linux(package: Path) -> Tuple[bool, str]:
         (updates_dir() / "install.log").write_bytes(r.stdout[-200_000:])
     except OSError:
         pass
-    if r.returncode in (126, 127):
+    out = r.stdout.decode("utf-8", "replace")
+    if "authentication agent" in out or r.returncode == 127:
+        return False, ("Ubuntu couldn't show its password window. To install it yourself, open Terminal and "
+                       f"run: sudo apt install {Path(package).resolve()}")
+    if r.returncode == 126:
         return False, "the password wasn't given"
     if r.returncode != 0:
         return False, f"the package manager stopped with an error (details in {updates_dir() / 'install.log'})"
@@ -192,6 +196,26 @@ def install_linux(package: Path) -> Tuple[bool, str]:
 def _system_env() -> dict:
     from .platform import child_env   # PyInstaller's bundled libraries mustn't leak into apt
     return child_env()
+
+
+def installed_version() -> str:
+    """Linux: the version of the installed sensiq package ("" if unknown or not installed)."""
+    if IS_WIN or not shutil.which("dpkg-query"):
+        return ""
+    try:
+        r = subprocess.run(["dpkg-query", "-W", "-f=${Version}", "sensiq"], capture_output=True, text=True,
+                           timeout=10, env=_system_env())
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def updated_on_disk() -> str:
+    """The newer version installed while this SENSIQ was running (e.g. by `sudo apt install`), or ""."""
+    if not can_install():
+        return ""
+    v = installed_version()
+    return v if v and is_newer(v) else ""
 
 
 def restart_later() -> None:

@@ -166,6 +166,7 @@ class App:
             self.root.after(800, self._linux_integration)
             self.root.after(6000, self._linux_tray_check)
             self.root.after(9000, lambda: self._offer_typing(first_time=True))
+            self.root.after(60000, self._check_installed)
         if getattr(self.args, "check", None):
             paths = list(self.args.check)
             self.root.after(2000, lambda: self._handle(("check_files", paths)))
@@ -267,6 +268,8 @@ class App:
             self.overlay.toast(message, "ok" if ok else "warn", ms=10000)
         elif kind == "update_available":
             _, info, manual = ev
+            if plat.IS_LINUX and self._restart_if_updated():
+                return
             if not self.updating:
                 # never installs by itself: a notification, the card, and a tray item to open it again
                 first = getattr(self, "update_info", None) is None or self.update_info.version != info.version
@@ -664,6 +667,8 @@ class App:
             self.quit()
         elif action == "refresh":
             pass
+        elif action == "restart_updated":
+            self._restart_if_updated()
         if self.tray:
             self.tray.refresh()
 
@@ -834,6 +839,28 @@ Brave: <code>brave://extensions</code>).{linux_note}</li>
                                "ok", ms=4000)
         if self.tray:
             self.tray.refresh()
+
+    def _restart_if_updated(self) -> bool:
+        """Linux: a newer SENSIQ was installed while this one runs (e.g. `sudo apt install`):
+        restart into it instead of offering an update that's already there."""
+        from . import updater
+        newer = updater.updated_on_disk()
+        if not newer:
+            return False
+        log.info("SENSIQ %s was installed while %s was running: restarting", newer, __version__)
+        self._notify(f"SENSIQ was updated to version {newer}. It restarts by itself in a moment.")
+        updater.restart_later()
+        self.root.after(1500, self.quit)
+        return True
+
+    def _check_installed(self) -> None:
+        def work():
+            from . import updater
+            if updater.updated_on_disk():
+                self.events.put(("tray", "restart_updated"))
+        threading.Thread(target=work, name="installed-check", daemon=True).start()
+        if not self.stop.is_set():
+            self.root.after(60000, self._check_installed)
 
     def _check_pause(self) -> None:
         """Ends a pause after an hour; also ends pauses left over from before (no end time)."""

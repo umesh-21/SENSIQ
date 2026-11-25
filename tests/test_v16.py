@@ -67,7 +67,8 @@ def test_update_is_offered_not_installed(monkeypatch):
     shown = []
     fake = types.SimpleNamespace(updating=False, update_info=None, tray=None,
                                  overlay=types.SimpleNamespace(update_card=lambda *a, **k: shown.append(a[0].version)),
-                                 _notify=lambda m: calls.append(("notify", m)))
+                                 _notify=lambda m: calls.append(("notify", m)),
+                                 _restart_if_updated=lambda: False)   # Linux: nothing newer installed
     fake._show_update_card = lambda: App._show_update_card(fake)
     info = updater.UpdateInfo("9.9.9", "notes", "page", "url", "SENSIQ-Setup-9.9.9.exe", 1, "x" * 64)
     App._handle(fake, ("update_available", info, False))

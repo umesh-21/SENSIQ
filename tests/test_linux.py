@@ -649,3 +649,29 @@ def test_browser_installed_but_never_opened_is_registered(home, tmp_path, monkey
     monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
     assert browserlink.register_host()
     assert (home / "config" / "google-chrome" / "NativeMessagingHosts" / "com.sensiq.host.json").exists()
+
+
+def test_deb_update_without_a_password_window(tmp_path, monkeypatch, home):
+    """No password window (e.g. not started from the desktop): say so and give the command."""
+    from sensiq import updater
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "pkexec").write_text("#!/bin/sh\necho 'Error creating textual authentication agent: no tty'\nexit 127\n")
+    (bin_dir / "pkexec").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    ok, why = updater.install_linux(tmp_path / "sensiq_9.0.0_amd64.deb")
+    assert not ok and "password window" in why and "sudo apt install" in why
+
+
+def test_manual_install_is_noticed(monkeypatch):
+    """`sudo apt install ./sensiq_X.deb` while SENSIQ runs: it restarts into the new version
+    instead of still offering the update."""
+    from sensiq import updater
+    monkeypatch.setattr(updater, "can_install", lambda: True)
+    monkeypatch.setattr(updater, "installed_version", lambda: "99.0.0")
+    assert updater.updated_on_disk() == "99.0.0"
+    monkeypatch.setattr(updater, "installed_version", lambda: updater.__version__)
+    assert updater.updated_on_disk() == ""
+    monkeypatch.setattr(updater, "can_install", lambda: False)        # run from source: never
+    monkeypatch.setattr(updater, "installed_version", lambda: "99.0.0")
+    assert updater.updated_on_disk() == ""
