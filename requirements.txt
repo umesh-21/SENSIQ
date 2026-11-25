@@ -20,6 +20,8 @@ winrt-Windows.Foundation>=2.0; sys_platform == "win32"
 winrt-Windows.Foundation.Collections>=2.0; sys_platform == "win32"
 winrt-Windows.Globalization>=2.0; sys_platform == "win32"
 # QR codes / barcodes, iPhone photos (HEIC), old Office files
-zxing-cpp>=2.2
+zxing-cpp>=2.2; sys_platform != "linux"
+# Linux: newer releases have no ready-made package for Ubuntu 22.04's Python 3.10 and fail to compile
+zxing-cpp>=2.2,<=3.1.1; sys_platform == "linux"
 pillow-heif>=0.16
 olefile>=0.46

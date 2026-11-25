@@ -3,6 +3,10 @@
 Each version's section is published as its GitHub release notes and shown in the app's
 "update available" card as **What's new**. Write it for the people using the app.
 
+## [1.7.2]
+
+- **The Linux package is back:** 1.7.1's Linux download was missing because a component it uses changed. This version contains all of 1.7.1's fixes below (the shield in the top bar, cards on your screen, typing checks in Brave and Chrome, more uploads checked in the browser). Nothing else changed; on Windows it is the same as 1.7.1.
+
 ## [1.7.1]
 
 ### Linux: fixes from the first real-desktop tests
