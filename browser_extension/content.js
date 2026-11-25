@@ -150,7 +150,7 @@
     const m = ev.data;
     if (!m || m.__sensiqAsk !== true || !Array.isArray(m.files)) return;
     window.postMessage({ __sensiqAck: true, id: m.id }, "*");
-    const r = await check(m.files, "picker");
+    const r = await check(m.files, m.source === "upload" ? "upload" : "picker");
     window.postMessage({ __sensiqAnswer: true, id: m.id, action: r.action,
                          files: r.action === "safe" ? r.files : null }, "*");
   });

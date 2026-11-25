@@ -73,3 +73,12 @@ def test_update_is_offered_not_installed(monkeypatch):
     App._handle(fake, ("update_available", info, False))
     assert shown == ["9.9.9"] and [c[0] for c in calls] == ["notify"]
     assert fake.update_info is info   # tray shows "Update available: SENSIQ 9.9.9…"
+
+
+def test_id_labels_are_not_names():
+    """The name model reads "Aadhaar" before a number as a name; it's a label, never a name."""
+    from sensiq.detector.ner import NerModel
+    text = "Ramesh Kumar Aadhaar 4918"
+    s, e = NerModel._trim_edges(text, 0, len("Ramesh Kumar Aadhaar"))
+    assert text[s:e] == "Ramesh Kumar"
+    assert NerModel._trim_edges("Aadhaar", 0, 7) == (0, 0)   # nothing left: dropped

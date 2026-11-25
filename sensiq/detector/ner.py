@@ -135,14 +135,22 @@ class NerModel:
         "you", "your", "ur", "we", "our", "he", "she", "his", "her", "they", "them", "regards", "best",
     }
 
+    # ID labels the model reads as a name ("Aadhaar 4918 ...", "Ramesh Kumar Aadhaar"): never part
+    # of a name at either end
+    ID_LABELS = {
+        "aadhaar", "aadhar", "adhaar", "aadhaar's", "pan", "mobile", "mob", "phone", "email", "dob", "vid",
+        "uid", "pincode", "ifsc", "upi", "passport", "gstin", "epic",
+    }
+
     @classmethod
     def _trim_edges(cls, text: str, s: int, e: int) -> Tuple[int, int]:
         words = [(m.start() + s, m.end() + s, m.group().lower())
                  for m in re.finditer(r"[A-Za-z][A-Za-z'.]*", text[s:e])]
         words = [(a, b, w.rstrip(".")) for a, b, w in words]
-        while words and words[0][2] in cls.EDGE_WORDS:
+        trim = cls.EDGE_WORDS | cls.ID_LABELS
+        while words and words[0][2] in trim:
             words.pop(0)
-        while words and words[-1][2] in cls.EDGE_WORDS:
+        while words and words[-1][2] in trim:
             words.pop()
         if not words:
             return s, s
